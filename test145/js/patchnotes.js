@@ -22,6 +22,26 @@
    seen on this device. */
 const PATCH_NOTES = [
   {
+    build: 223, date: '2026-11-27', title: 'Gold and the Trader',
+    items: [
+      'Every game that earns a card now pays gold too: one gold for every 200 points, at least 10 and at most 150. Coins burst from the pedestal on the end screen and pour into your purse.',
+      'The journey pays its own gold: 25, 35 and 50 for its three games.',
+      'Spend it at the Trader, a new store on the main menu. Every card is for sale, sorted by tier from Stone to Mythic, and a card you cannot afford yet shows how much more gold you need.',
+      'Tap a card to hold it up and turn it over, then Buy. Dear cards ask you to tap twice, and the card flies straight into your deck.',
+      'Your purse shows on the main menu and in Settings. Gold is kept safe in the cloud with your cards.',
+      'Mythic cards are rarer as rewards, and a great victory gives a second card less often. Stone and Bronze come up a little more.',
+    ],
+  },
+  {
+    build: 222, date: '2026-11-27', title: 'Heal a whole army at once',
+    items: [
+      'Select a group of soldiers or ships with anyone hurt, and a red heart appears beside the info button. One tap heals everyone standing where they can be mended, by your hall, a war camp or a dock.',
+      'Short of food? The heart heals your most valuable soldiers first, as many as you can pay for.',
+      'Hurt soldiers too far away walk home, are healed when they arrive and stay there, so you can win a fight in the woods and send the wounded back in one tap. They still come back veterans.',
+      'The map, your cards and the menu now show at the top right of the screen in Firefox and Safari on a laptop.',
+    ],
+  },
+  {
     build: 219, date: '2026-11-23', title: 'A bigger, clearer look',
     items: [
       'The bar across the top is one carved walnut panel in aged bronze, with no boxes in it. Every good wears its own drawn picture beside a larger total: meat for food, logs for wood, stone blocks, gold nuggets and a pair of villagers for your people.',

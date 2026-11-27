@@ -169,6 +169,11 @@ const DeckScreens = {
       // a defeat that fell short shows how far it got (Deck.eligible): the
       // row of pips counts whatever is missing — the deeds, else the days
       pips: (!res.ok && Deck.eligible(rep).pips) || null,
+      /* THE GOLD (CFG.GOLD, js/gold.js): what this run paid into the purse
+         (0 for a run that earned nothing), and the purse after it — the
+         headline beside the card, the score under it */
+      gold: (window.Gold && Gold.on()) ? Math.max(0, res.gold | 0) : null,
+      purse: (window.Gold && Gold.on()) ? Gold.balance() : 0,
     };
     // a fresh run plays its reveal; a resumed or already-told one just stands there
     const fresh = prior == null && !res.again, play = fresh && !this.reduced();
@@ -394,7 +399,7 @@ const DeckScreens = {
       document.getElementById('scrEndgame').appendChild(root);
       root.addEventListener('click', e => this._click(e));
     }
-    root.className = v.win ? 'ceWin' : 'ceLoss';
+    root.className = (v.win ? 'ceWin' : 'ceLoss') + (v.gold != null ? ' ceHasGold' : '');
     const mode = (typeof G !== 'undefined' && G.modeCfg) ? G.modeCfg().name : '';
     const lau = side => v.win ? `<i class="ceBL ${side}" aria-hidden="true"></i>` : '';
     root.innerHTML =
@@ -430,7 +435,7 @@ const DeckScreens = {
           '<div class="ceInfo">' +
             '<div class="cePlate" style="--i:0"><small></small><b></b></div>' +
             '<i class="ceSp" aria-hidden="true"></i>' +
-            '<div class="ceScore" style="--i:1"><small>Final score</small><b class="ceScoreN">0</b>' +
+            '<div class="ceScore" style="--i:1">' + this._goldRow(v) + '<small>Final score</small><b class="ceScoreN">0</b>' +
               /* A CARD-ASSISTED RUN SAYS SO (approved at Gate 1: marked on the
                  end screen, in telemetry and on the board), in the score's own
                  box — the one block the board's name box never hides — on the
@@ -506,14 +511,19 @@ const DeckScreens = {
     const scoreEl = root.querySelector('.ceScoreN');
     if (!play) {
       scoreEl.textContent = v.score.toLocaleString();
+      this._goldFinal(root);
       if (this.reduced()) root.classList.add('ceCalm');
       // less motion is not less sound: a fresh ending still sounds its sting
       this._sting();
+      if (fresh && v.gold > 0) this._after(500, () => { if (window.Gold) Gold.sound('purse'); });
       return;
     }
     root.classList.add('ceIntro');
+    if (v.gold > 0 && !v.goldShown) { const pn = root.querySelector('.cePurseN'); if (pn) pn.textContent = Gold.fmt(Math.max(0, v.purse - v.gold)); }
     this._after(400, () => this._sting());
     this._after(T.info + 70, () => this._countUp(scoreEl, v.score, 720));
+    // the gold first among the run's numbers: coins off the plinth into its counter
+    this._after(T.info + 140, () => this._goldReveal(root));
     this._after(T.info + 5 * 70 + 420, () => root.classList.remove('ceIntro'));
   },
 
@@ -610,6 +620,9 @@ const DeckScreens = {
     if (st) st.classList.remove('ceReveal', 'ceRising');
     if (this._view && (counting || root.querySelector('.ceScoreN').textContent === '0'))
       root.querySelector('.ceScoreN').textContent = this._view.score.toLocaleString();
+    // the coins in the air land at once, the gold says its sum
+    if (window.Gold) Gold.stop();
+    this._goldFinal(root);
     this._sting();
     this._ready = true;
     /* a card the skip caught between two (the bonus, staged on a timer
@@ -618,6 +631,60 @@ const DeckScreens = {
     const v = this._view;
     if (v && v.claimed < v.cards.length && !this._flying && !root.querySelector('.ceMove .ccard'))
       this._stageCard(v.claimed, false, false);
+  },
+
+  /* ---------------- THE GOLD (js/gold.js) ----------------
+     A row at the head of the run's panel, the headline beside the card:
+     the coin, "+38 gold", and the purse it went into. The score sits under
+     it, smaller. A run that earned nothing says so, dimmed; the switch off,
+     there is no row at all. */
+  _goldRow(v) {
+    if (v.gold == null || !window.Gold) return '';
+    const none = !(v.gold > 0);
+    return `<div class="ceGold${none ? ' none' : ''}" aria-live="polite">` +
+      (none ? '<span class="ceGoldU">No gold this run</span>'
+        : `<i class="ceGM">${Gold.mark(30)}</i><b class="ceGoldN">+0</b><span class="ceGoldU">gold</span>`) +
+      `<span class="cePurse"><small>Purse</small><b class="cePurseN">${Gold.fmt(v.purse)}</b></span></div>`;
+  },
+  _goldFinal(root) {
+    const v = this._view;
+    if (!v || v.gold == null || !root) return;
+    const n = root.querySelector('.ceGoldN'), p = root.querySelector('.cePurseN');
+    if (n) n.textContent = '+' + Gold.fmt(v.gold);
+    if (p) p.textContent = Gold.fmt(v.purse);
+    v.goldShown = true;
+  },
+  /* THE COINS BURST FROM THE PLINTH and stream into the counter, which
+     ticks up a coin at a time with a chime, the purse beside it with it,
+     and settles with a slight overshoot as the last lands */
+  _goldReveal(root) {
+    const v = this._view;
+    if (!v || !root || !(v.gold > 0) || v.goldShown || !window.Gold) { this._goldFinal(root); return; }
+    const n = root.querySelector('.ceGoldN'), p = root.querySelector('.cePurseN'), mark = root.querySelector('.ceGM');
+    const plinth = root.querySelector('.cePlinth') || root.querySelector('.ceStage');
+    if (!n || !mark || !plinth) { this._goldFinal(root); return; }
+    const r = plinth.getBoundingClientRect(), from = { x: r.left + r.width / 2, y: r.top + r.height * 0.3 };
+    const gold = v.gold, before = Math.max(0, v.purse - gold), gen = this._gen;
+    v.goldShown = true;
+    if (p) p.textContent = Gold.fmt(before);
+    Gold.fly({
+      from, to: () => Gold.at(mark), n: Gold.coinsFor(gold), burst: true, size: 32,
+      onEach: (i, k) => {
+        if (gen !== this._gen) return;
+        const got = Math.round(gold * (i + 1) / k);
+        n.textContent = '+' + Gold.fmt(got);
+        if (p) p.textContent = Gold.fmt(before + got);
+        Gold.sound('coin');
+        Gold.pop(mark);
+      },
+      onDone: () => {
+        if (gen !== this._gen) return;
+        this._goldFinal(root);
+        Gold.sound('purse');
+        Gold.settle(n);
+        Gold.flash(Gold.at(mark), 96);
+      },
+    });
   },
 
   _plate(c) {
@@ -1908,6 +1975,34 @@ DeckScreens.CSS = `
   background: linear-gradient(#fff3c8, #f2cd6a 48%, #c08a2c); -webkit-background-clip: text; background-clip: text; color: transparent;
   filter: drop-shadow(0 2px 0 rgba(0,0,0,0.75)); }
 #cardEnd.ceLoss .ceScoreN { background: linear-gradient(#f3efe2, #cfc6ad 52%, #9b917a); -webkit-background-clip: text; background-clip: text; }
+/* THE GOLD, the headline of the run's panel (js/gold.js): the coin, the sum
+   in the book serif the HUD counts in, the purse after a rule; the score
+   under it, a size smaller */
+#cardEnd .ceGold { flex: 0 0 100%; display: flex; align-items: center; justify-content: center; gap: 8px; margin: 1px 0 6px; padding-bottom: 7px;
+  border-bottom: 1px solid rgba(214,170,74,0.28); }
+#cardEnd .ceGM { display: flex; width: 30px; height: 30px; flex: 0 0 auto; }
+#cardEnd .ceGoldN { font: 700 34px/1 var(--numfont); color: #ffe7a0; font-variant-numeric: tabular-nums; display: inline-block; transform-origin: 40% 60%;
+  text-shadow: 0 2px 0 #2a1704, 0 0 12px rgba(255,200,80,0.4); }
+#cardEnd .ceGoldU { font: 700 15px/1 var(--menufont); letter-spacing: 2px; text-transform: uppercase; color: #f2d58a; text-shadow: 0 1px 0 #000; }
+#cardEnd .ceGold.none .ceGoldU { color: #a99d84; font-size: 12px; letter-spacing: 1.6px; }
+#cardEnd .cePurse { display: flex; align-items: baseline; gap: 6px; margin-left: 10px; padding-left: 12px; border-left: 1px solid rgba(214,170,74,0.3); }
+#cardEnd .cePurse small { font-size: 10px; letter-spacing: 2px; }
+#cardEnd .cePurseN { font: 700 19px/1 var(--numfont); color: #f1dca4; font-variant-numeric: tabular-nums; }
+#cardEnd.ceHasGold .ceScoreN { font-size: 23px; }
+/* A SHORT PHONE puts the gold and the score on ONE row (the purse is the
+   title's and the store's to show): the card keeps its whole size and every
+   space its FIT_KEEP (DeckScreens._fitCard, tests/deck-screens.mjs §5f) */
+@media (max-height: 740px) and (max-width: 899px) {
+  #cardEnd .ceGold { flex: 0 0 auto; margin: 0; padding: 0 11px 0 0; border-bottom: 0; border-right: 1px solid rgba(214,170,74,0.3); gap: 6px; }
+  #cardEnd .ceGM { width: 26px; height: 26px; }
+  #cardEnd .ceGM .gmark { --s: 26px !important; }
+  #cardEnd .ceGoldN { font-size: 29px; }
+  #cardEnd .ceGoldU { font-size: 13px; letter-spacing: 1.4px; }
+  #cardEnd .cePurse { display: none; }
+  #cardEnd.ceHasGold .ceScore > small { font-size: 10px; letter-spacing: 1.6px; }
+  #cardEnd.ceHasGold .ceScore { column-gap: 8px; align-items: center; }
+  #cardEnd.ceHasGold .ceScoreN { font-size: 21px; }
+}
 #cardEnd .ceMeta { margin: 1px 0 0; font-size: 12px; font-weight: 600; letter-spacing: 1px; color: #b5a888; }
 #cardEnd .ceMeta { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; column-gap: 9px; row-gap: 2px; }
 #cardEnd .ceDay, #cardEnd .ceAssist { white-space: nowrap; }
