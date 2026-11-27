@@ -1586,7 +1586,7 @@ title): the title's pouch plate under the hero plates (`#btnTitleStore`,
 `TitleScreen.ICON` 'pouch', the purse on it) and Settings' Your Purse card.
 It stands on the trader's stall (`assets/ui/store/stall-{wide,tall}`, Scale2x
 of the masters, the night's dark under them) with the purse always in view,
-every card by tier, highest first, as many columns as whole-pixel faces fit
+every card by tier, Stone (the cheapest) first, as many columns as whole-pixel faces fit
 (three on a 390px phone). A tap lifts the card (`Deck.lookFit`), a tap turns
 it, BUY under it; a short purse shows the price red and "N more gold needed"
 on a button that still answers (never a dead button). A purchase flies coins
