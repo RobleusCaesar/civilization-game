@@ -2351,7 +2351,7 @@ const Screens = {
       this.backTo = 'title';
       this.show('newgame');
     });
-    on('btnTitleLoad', () => { this.backTo = 'title'; this.show('load'); });
+    // (Load left the title for the Settings' Saves tab in build 224: SettingsPage.openLoad)
     on('btnTitleBoard', () => { this.backTo = 'title'; this.show('leaders'); });
     on('ldrBack', () => {
       // the card system's reward screen sends its LEADERBOARD here and is
@@ -2367,8 +2367,9 @@ const Screens = {
     on('btnSubmitScore', () => (window.Backend && Backend.isReady() && !this._markWait) ? this.submitScore() : this._offerSubmit());
     on('btnTitleSettings', () => { this.backTo = 'title'; this.show('settings'); });
     on('btnTitleHow', () => { this.backTo = 'title'; this.show('howto'); });
+    // the Load page opened from the Settings' Load & Save tab (build 224) comes home there
     for (const id of ['ngBack', 'loadBack', 'setBack', 'howBack'])
-      on(id, () => this.show(this.backTo === 'paused' ? 'paused' : 'title'));
+      on(id, () => this.show(this.backTo === 'paused' ? 'paused' : this.backTo === 'settings' ? 'settings' : 'title'));
     /* the difficulty cards — the only choice a new game asks for, and it
        speaks the SAME two-tap grammar the origin cards teach next: first
        tap selects and shows what the trial means, the second tap on the

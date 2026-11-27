@@ -87,9 +87,17 @@ const TitleScreen = {
      settings page's chosen tab: a warm amber face, a bright gold line with a
      darker one inside it, cream letters. Hierarchy by light and size, never
      by ornament: no straps, bosses, grain or knots. */
-  KIND: { btnTitleNew: 'lit', btnBegin: 'lit' },
+  /* AND THREE COLOURS KEEP THE MENU FROM READING AS ONE GREY LIST (build
+     224 — the operator: "Give leaderboard back its blue color, and make
+     store and cards buttons golden. Keeps the menu from being too
+     monotonous"): the Leaderboard wears the reward screen's navy under the
+     same gold line, and the Store and the Cards — the treasure — are struck
+     gold with dark letters. The same cut corner and lines; only the face
+     changes, and New Game stays the one LIT plate (its size and its amber
+     light keep it first). */
+  KIND: { btnTitleNew: 'lit', btnBegin: 'lit', btnTitleBoard: 'navy', btnTitleStore: 'gold', btnTitleCards: 'gold' },
   ICON: { btnContinue: 'resume', btnTitleNew: 'flame', btnTitleBoard: 'trophy',
-    btnTitleSettings: 'gear', btnTitleHow: 'book', btnTitleLoad: 'scroll', btnTitleCards: 'cards', btnTitleStore: 'pouch' },
+    btnTitleSettings: 'gear', btnTitleHow: 'book', btnTitleCards: 'cards', btnTitleStore: 'pouch' },
   dress() {
     if (!this.el) return;
     for (const b of this.el.querySelectorAll('.tmenu .abtn')) {
@@ -152,6 +160,12 @@ const TitleScreen = {
       lines: ['rgba(214,170,74,0.55)'], gild: 'rgba(240,206,118,0.9)', top: 'rgba(255,240,200,0.06)', foot: 'rgba(0,0,0,0.28)' },
     lit: { stops: ['#6a4f22', '#4a3515', '#3a280f'], at: [0, 0.55, 1], edge: '#1a1005',
       lines: ['#f2cf6c', '#8a6420'], top: 'rgba(255,236,170,0.12)', foot: 'rgba(0,0,0,0.25)' },
+    // the reward screen's navy, under the quiet plate's own gold line
+    navy: { stops: ['#34456b', '#263659', '#1b2746'], at: [0, 0.5, 1], edge: '#060a16',
+      lines: ['rgba(222,182,92,0.62)'], gild: 'rgba(244,214,130,0.95)', top: 'rgba(205,222,255,0.09)', foot: 'rgba(0,0,0,0.3)' },
+    // struck gold, banded like beaten leaf: a pale crest, a deeper band low down
+    gold: { stops: ['#f7dc8c', '#e8bd57', '#d4a141', '#c18c30', '#d8a947', '#a8721f'], at: [0, 0.3, 0.5, 0.58, 0.82, 1], edge: '#3a2104',
+      lines: ['rgba(255,246,206,0.85)', 'rgba(122,74,14,0.55)'], top: 'rgba(255,250,228,0.28)', foot: 'rgba(92,46,0,0.22)' },
   },
   /* the settings page's corner (its --chamfer, the HUD's --hud-chamfer): a
      4px 45° cut. It was a stepped pixel corner until build 215, which cut the
@@ -181,7 +195,7 @@ const TitleScreen = {
      corners. The pressed state's layers (.hi, .lo, .dim) ride along, so the
      press stays the plate going down into its frame. Nothing is a raster. */
   plaque(w, h, kind) {
-    const n = 't2' + (++this._n), P = this.PLATE[kind === 'lit' ? 'lit' : 'plate'], f = v => this.f(v);
+    const n = 't2' + (++this._n), P = this.PLATE[kind] || this.PLATE.plate, f = v => this.f(v);
     const fid = n + 'f', cid = n + 'c';
     let s = '<defs>' +
       `<linearGradient id="${fid}" x1="0" y1="0" x2="0" y2="1">` +
@@ -391,14 +405,19 @@ TitleScreen.CSS = `
    catching the light */
 #scrTitle.t2 .abtn[data-t2="lit"] { color: #fff0bf; letter-spacing: 2.4px; }
 #scrTitle.t2 .abtn[data-t2="lit"] .t2i { filter: drop-shadow(0 1px 0 rgba(0,0,0,0.6)) drop-shadow(0 0 6px rgba(255,210,110,0.45)); }
+/* the navy plate: cool cream letters; the gold plate: dark letters struck
+   into the metal with a hair of light under them, the icon struck dark too
+   (icon(), kind 'gold') */
+#scrTitle.t2 .abtn[data-t2="navy"] { color: #e8eef9; }
+#scrTitle.t2 .plaques .abtn[data-t2="gold"], #scrTitle.t2 .plaques .trow3 .abtn[data-t2="gold"] { color: #2c1604; text-shadow: 0 1px 0 rgba(255,244,208,0.6); }
+#scrTitle.t2 .abtn[data-t2="gold"] .t2i { filter: drop-shadow(0 1px 0 rgba(255,243,205,0.55)); }
 #scrTitle.t2 .plaques .abtn small { color: rgba(232,211,155,0.86); letter-spacing: 1.6px; font-size: 10px; margin-top: 3px;
   text-shadow: 0 1px 0 rgba(0,0,0,0.9); }
 /* the minor row: smaller plates, their icon and word on one line */
-#scrTitle.t2 .plaques .trow3 { gap: 10px; }
-#scrTitle.t2 .plaques .trow3.clFour .abtn { flex: 1 1 calc(50% - 5px); }
-/* three across (the deck switched off: no Cards plaque) has no room for an
-   icon beside a word — the row reads as words, as it always did */
-#scrTitle.t2 .plaques .trow3:not(.clFour) .t2i { display: none; }
+/* two to a row (Settings and the Guide, the Store and the Cards — build
+   224 took Load into the Settings), so every word keeps its icon */
+#scrTitle.t2 .plaques .trow3 { gap: 10px; flex-wrap: wrap; }
+#scrTitle.t2 .plaques .trow3 .abtn { flex: 1 1 calc(50% - 5px); }
 #scrTitle.t2 .plaques .trow3 .abtn { min-height: 48px; font-size: 13px; letter-spacing: 1.4px; padding: 4px 6px; color: #e9dcbd; }
 #scrTitle.t2 .trow3 .blab { gap: 7px; }
 #scrTitle.t2 .trow3 .t2i { width: 18px; height: 18px; }
@@ -410,7 +429,12 @@ TitleScreen.CSS = `
 /* the patch notes' unread dot (js/settings.js) sits in the plate's corner,
    as it sits in the settings page's tab */
 #scrTitle.t2 .sxDoorDot { top: 6px; right: 7px; width: 9px; height: 9px; }
-/* the deck's count: a gold-ringed coin beside the word */
+/* the deck's count and the purse: a dark coin-slot ringed in gold beside
+   the word, the same on both gold plates */
+#scrTitle.t2 #btnTitleStore .tGold { display: inline-flex; align-items: center; gap: 3px; height: 19px; margin-left: 7px; padding: 0 6px 0 3px;
+  border-radius: 10px; background: radial-gradient(circle at 50% 35%, #3a2410, #170c03); border: 1px solid #e0b252;
+  box-shadow: 0 0 0 1px rgba(0,0,0,0.6); font: 700 11px/1 var(--numfont); letter-spacing: 0; color: #ffe7a8; text-shadow: none;
+  font-variant-numeric: tabular-nums; box-sizing: border-box; }
 #scrTitle.t2 #btnTitleCards .clN { height: 19px; min-width: 19px; line-height: 17px; margin-left: 7px; padding: 0 5px;
   background: radial-gradient(circle at 50% 35%, #3a2410, #170c03); border: 1px solid #e0b252;
   box-shadow: 0 0 0 1px rgba(0,0,0,0.6); color: #ffe7a8; font-size: 11px; text-shadow: none; }

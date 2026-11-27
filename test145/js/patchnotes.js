@@ -22,13 +22,14 @@
    seen on this device. */
 const PATCH_NOTES = [
   {
-    build: 223, date: '2026-11-27', title: 'Gold and the Trader',
+    build: 224, date: '2026-11-27', title: 'Gold and the Trader',
     items: [
       'Every game that earns a card now pays gold too: one gold for every 200 points, at least 10 and at most 150. Coins burst from the pedestal on the end screen and pour into your purse.',
       'The journey pays its own gold: 25, 35 and 50 for its three games.',
-      'Spend it at the Trader, a new store on the main menu. Every card is for sale, sorted by tier from Stone to Mythic, and a card you cannot afford yet shows how much more gold you need.',
+      'Spend it at the Trader, a new store on the main menu beside your Cards. Every card is for sale, sorted by tier from Stone to Mythic, as many as your gold can buy, and a card you cannot afford yet shows how much more gold you need.',
       'Tap a card to hold it up and turn it over, then Buy. Dear cards ask you to tap twice, and the card flies straight into your deck.',
       'Your purse shows on the main menu and in Settings. Gold is kept safe in the cloud with your cards.',
+      'Load has moved into Settings, under its own Load and Save tab, and the main menu is a little shorter for it. The Leaderboard is blue again, and the Store and your Cards are gold.',
       'Mythic cards are rarer as rewards, and a great victory gives a second card less often. Stone and Bronze come up a little more.',
     ],
   },
