@@ -277,13 +277,19 @@
   @media (max-width: 330px) { #topbar { --res-ic: 19px; --res-fs: 14px; --res-gap: 2px; } }
   /* THE DAY: its own sun emblem (the moon by night — UI.refresh reads
      R.dayPhase) and "Day N" in the header's serif, integrated into the
-     panel rather than boxed */
-  #rDay { position: relative; display: flex; align-items: center; height: 44px; padding: 0 8px 0 44px; flex: 0 0 auto;
-    color: #f3dfa6; font: 600 22px/1 var(--numfont); letter-spacing: .2px;
+     panel rather than boxed. THE SAME SIZE AS THE GOODS ABOVE IT (operator,
+     build 220: "shrink the sun/moon and day text so it's the same size as
+     the icons and text on the top row… it looks off"): its picture is the
+     goods' height (--res-ic) and its type theirs (--res-fs), stepping down
+     with them at every width. */
+  #rDay { position: relative; display: flex; align-items: center; height: 44px; flex: 0 0 auto;
+    padding: 0 8px 0 calc(4px + var(--res-ic, 25px) + var(--res-gap, 5px));
+    color: #f4e4b8; font: 600 var(--res-fs, 18px)/1 var(--numfont); letter-spacing: .1px;
     text-shadow: 0 1px 0 #000, 0 2px 3px rgba(0,0,0,.7); }
-  #rDay::after { content: ''; position: absolute; left: 4px; top: 50%; width: 34px; height: 34px; margin-top: -17px; pointer-events: none;
+  #rDay::after { content: ''; position: absolute; left: 4px; top: 50%; width: var(--res-ic, 25px); height: var(--res-ic, 25px);
+    margin-top: calc(var(--res-ic, 25px) / -2); pointer-events: none;
     background: url("assets/ui/hud/day-sun.png?v=2") center / contain no-repeat; filter: drop-shadow(0 2px 1px rgba(0,0,0,.7)); }
-  #rDay.night::after { background-image: url("assets/ui/hud/day-moon.png?v=2"); background-size: 29px auto; }   /* the moon's own pixels: 89px across */
+  #rDay.night::after { background-image: url("assets/ui/hud/day-moon.png?v=2"); }
   #rDay .dW { white-space: pre; }
   /* THE SECOND ROW STANDS STILL (operator, build 218, with a phone shot of
      two saved armies shoving the day right: "We don't want to push the day to
@@ -341,7 +347,7 @@
     #topbar .trow + .trow { gap: 5px; }
     #hudNav { gap: 4px; }
     #hudNav .iconbtn { width: 40px; }
-    #rDay { font-size: 21px; padding-right: 6px; }
+    #rDay { padding-right: 6px; }
   }
   @media (max-width: 382px) {
     #topbar .trow + .trow { gap: 4px; }
@@ -350,16 +356,14 @@
     #topbar .iconbtn .hic { height: 29px; }
     #armyBar .aic { width: 28px; height: 28px; }
     #topbar #armyBar .iconbtn { min-width: 30px; }
-    #rDay { font-size: 20px; padding-left: 40px; }
-    #rDay::after { width: 31px; height: 31px; margin-top: -15.5px; }
   }
   @media (max-width: 370px) {
     #topbar .trow + .trow { gap: 2px; padding: 0 2px 0 4px; }
     #hudNav { gap: 0; }
     #hudNav .iconbtn { width: 37px; }
     #topbar .iconbtn .hic { height: 28px; }
-    #rDay { padding: 0 4px 0 34px; font-size: 19px; }
-    #rDay::after { left: 2px; width: 28px; height: 28px; margin-top: -14px; }
+    #rDay { padding: 0 4px 0 calc(2px + var(--res-ic, 25px) + var(--res-gap, 5px)); }
+    #rDay::after { left: 2px; }
     #rDay .dW { display: none; }
   }
 
@@ -800,9 +804,11 @@
   .abtn.pkill.armed .pki { filter: none; }
   #helpToggle ~ .abtn.pkill { right: 106px; }
   /* A SOLDIER'S NEXT RANK (UI.rankBtn): the ℹ️'s size, beside it */
-  .abtn.prank { position: absolute; right: 106px; margin-top: -2px; min-width: 40px; padding: 4px 8px;
+  /* …and the party's heart (UI.healBtn) in the same place: the whole party mended at one tap */
+  .abtn.prank, .abtn.pheal { position: absolute; right: 106px; margin-top: -2px; min-width: 40px; padding: 4px 8px;
     display: inline-flex; align-items: center; justify-content: center; }
-  .abtn.prank svg { display: block; }
+  .abtn.prank svg, .abtn.pheal svg { display: block; }
+  .abtn.pheal.cant svg { filter: grayscale(1) brightness(.75); }
   #panel .phead.k3 > div { padding-right: 152px; }   /* clear the red button, the −/ℹ️ and the ✕ (42px plates) */
 
   /* THE PANEL'S BUTTONS ARE THE MENU'S PLATES (build 214 — the operator: "make
@@ -835,7 +841,7 @@
      square, and still where the header places them: the plate rule above
      (#panel .abtn, position relative) outranks their own ids, so they say
      absolute again here (tests/rank-up.mjs theButtonSitsBesideTheInfo) */
-  #panel #panelClose, #panel #helpToggle, #panel .abtn.prank, #panel .abtn.pkill { position: absolute; min-width: 42px; min-height: 42px; padding: 4px 8px; }
+  #panel #panelClose, #panel #helpToggle, #panel .abtn.prank, #panel .abtn.pheal, #panel .abtn.pkill { position: absolute; min-width: 42px; min-height: 42px; padding: 4px 8px; }
   #panel .pchip { border: 0; border-radius: 0; background: none; position: relative; isolation: isolate; color: #f0e2bd; }
   #panel .pchip.on::before { background: var(--plate-face-lit); border-image-source: var(--plate-rim-lit); }
   #panel .pchip:active { background: none; transform: translateY(1px); }
@@ -1284,7 +1290,13 @@
     #topbar .trow + .trow::before { display: none; }   /* side by side: no seam between them */
     /* the armies' and the cards' room is a fixed width here too, so the day
        never slides along the bar as they come and go */
-    #hudMid { flex: 0 0 196px; }
+    /* …and it is a WIDTH, never a flex-basis alone (build 221 — a player on
+       Windows Firefox: "There is no button"): Firefox and Safari size the
+       row from its items' own widths and ignore a flex-basis there, so the
+       row came out 196px short, the middle overflowed it and pushed the
+       map, the cards and the menu off the right of the screen
+       (tests/desktop-layout.mjs andTheButtonsStandOnTheScreen) */
+    #hudMid { flex: 0 0 196px; width: 196px; }
     #hudNav { gap: 10px; }
     /* a desktop has the room for a map you can read */
     #mini { width: 148px; height: 148px; }
@@ -2488,59 +2500,61 @@
 
 </div>
 
-<script src="test145/js/feedback.js?v=219"></script>
-<script src="test145/js/config.js?v=219"></script>
-<script src="test145/js/audio.js?v=219"></script>
-<script src="test145/js/config.supabase.js?v=219"></script>
-<script src="test145/js/vendor/supabase.js?v=219"></script>
-<script src="test145/js/backend.js?v=219"></script>
-<script src="test145/js/competition.js?v=219"></script>
-<script src="test145/js/score.js?v=219"></script>
-<script src="test145/js/cards.js?v=219"></script>
-<script src="test145/js/deck.js?v=219"></script>
-<script src="test145/js/artstyle.js?v=219"></script>
-<script src="test145/js/sprites.js?v=219"></script>
-<script src="test145/js/formations.js?v=219"></script>
-<script src="test145/js/relics.js?v=219"></script>
-<script src="test145/js/assets.js?v=219"></script>
-<script src="test145/js/dev.js?v=219"></script>
-<script src="test145/js/map.js?v=219"></script>
-<script src="test145/js/buildings.js?v=219"></script>
-<script src="test145/js/units.js?v=219"></script>
-<script src="test145/js/combat.js?v=219"></script>
-<script src="test145/js/ai.js?v=219"></script>
-<script src="test145/js/render.js?v=219"></script>
-<script src="test145/js/battlefx.js?v=219"></script>
-<script src="test145/js/goldfx.js?v=219"></script>
-<script src="test145/js/footing.js?v=219"></script>
-<script src="test145/js/ruins.js?v=219"></script>
-<script src="test145/js/roads.js?v=219"></script>
-<script src="test145/js/beasts.js?v=219"></script>
-<script src="test145/js/defeatart.js?v=219"></script>
-<script src="test145/js/victoryart.js?v=219"></script>
-<script src="test145/js/ui.js?v=219"></script>
-<script src="test145/js/feel.js?v=219"></script>
-<script src="test145/js/lookout.js?v=219"></script>
-<script src="test145/js/screens.js?v=219"></script>
-<script src="test145/js/patchnotes.js?v=219"></script>
-<script src="test145/js/settings.js?v=219"></script>
-<script src="test145/js/board.js?v=219"></script>
-<script src="test145/js/pages.js?v=219"></script>
-<script src="test145/js/titlescreen.js?v=219"></script>
-<script src="test145/js/scenario-maps.js?v=219"></script>
-<script src="test145/js/scenarios.js?v=219"></script>
-<script src="test145/js/prologue.js?v=219"></script>
-<script src="test145/js/deckfx.js?v=219"></script>
-<script src="test145/js/deckfx-town.js?v=219"></script>
-<script src="test145/js/deckfx-army.js?v=219"></script>
-<script src="test145/js/deckfx-growth.js?v=219"></script>
-<script src="test145/js/deckfx-rival.js?v=219"></script>
-<script src="test145/js/deckui.js?v=219"></script>
-<script src="test145/js/deckscreens.js?v=219"></script>
-<script src="test145/js/cardintro.js?v=219"></script>
-<script src="test145/js/game.js?v=219"></script>
-<script src="test145/js/terrain-core.js?v=219"></script>
-<script src="test145/js/terrain.js?v=219"></script>
-<script src="test145/js/terrain-v5.js?v=219"></script>
+<script src="test145/js/feedback.js?v=223"></script>
+<script src="test145/js/config.js?v=223"></script>
+<script src="test145/js/audio.js?v=223"></script>
+<script src="test145/js/config.supabase.js?v=223"></script>
+<script src="test145/js/vendor/supabase.js?v=223"></script>
+<script src="test145/js/backend.js?v=223"></script>
+<script src="test145/js/competition.js?v=223"></script>
+<script src="test145/js/score.js?v=223"></script>
+<script src="test145/js/cards.js?v=223"></script>
+<script src="test145/js/deck.js?v=223"></script>
+<script src="test145/js/artstyle.js?v=223"></script>
+<script src="test145/js/sprites.js?v=223"></script>
+<script src="test145/js/formations.js?v=223"></script>
+<script src="test145/js/relics.js?v=223"></script>
+<script src="test145/js/assets.js?v=223"></script>
+<script src="test145/js/dev.js?v=223"></script>
+<script src="test145/js/map.js?v=223"></script>
+<script src="test145/js/buildings.js?v=223"></script>
+<script src="test145/js/units.js?v=223"></script>
+<script src="test145/js/combat.js?v=223"></script>
+<script src="test145/js/ai.js?v=223"></script>
+<script src="test145/js/render.js?v=223"></script>
+<script src="test145/js/battlefx.js?v=223"></script>
+<script src="test145/js/goldfx.js?v=223"></script>
+<script src="test145/js/footing.js?v=223"></script>
+<script src="test145/js/ruins.js?v=223"></script>
+<script src="test145/js/roads.js?v=223"></script>
+<script src="test145/js/beasts.js?v=223"></script>
+<script src="test145/js/defeatart.js?v=223"></script>
+<script src="test145/js/victoryart.js?v=223"></script>
+<script src="test145/js/ui.js?v=223"></script>
+<script src="test145/js/feel.js?v=223"></script>
+<script src="test145/js/lookout.js?v=223"></script>
+<script src="test145/js/screens.js?v=223"></script>
+<script src="test145/js/patchnotes.js?v=223"></script>
+<script src="test145/js/settings.js?v=223"></script>
+<script src="test145/js/board.js?v=223"></script>
+<script src="test145/js/pages.js?v=223"></script>
+<script src="test145/js/titlescreen.js?v=223"></script>
+<script src="test145/js/scenario-maps.js?v=223"></script>
+<script src="test145/js/scenarios.js?v=223"></script>
+<script src="test145/js/prologue.js?v=223"></script>
+<script src="test145/js/deckfx.js?v=223"></script>
+<script src="test145/js/deckfx-town.js?v=223"></script>
+<script src="test145/js/deckfx-army.js?v=223"></script>
+<script src="test145/js/deckfx-growth.js?v=223"></script>
+<script src="test145/js/deckfx-rival.js?v=223"></script>
+<script src="test145/js/deckui.js?v=223"></script>
+<script src="test145/js/deckscreens.js?v=223"></script>
+<script src="test145/js/gold.js?v=223"></script>
+<script src="test145/js/store.js?v=223"></script>
+<script src="test145/js/cardintro.js?v=223"></script>
+<script src="test145/js/game.js?v=223"></script>
+<script src="test145/js/terrain-core.js?v=223"></script>
+<script src="test145/js/terrain.js?v=223"></script>
+<script src="test145/js/terrain-v5.js?v=223"></script>
 </body>
 </html>

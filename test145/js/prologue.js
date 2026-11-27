@@ -2831,7 +2831,7 @@ const Prologue = {
       const c = e.target && e.target.closest;
       if (!c) return;
       if (e.target.closest('#armyBar button')) this._bannerAt = this.now() + 1e-3;
-      if (e.target.closest('#panel [data-act="heal"]:not(.cant)')) this._healAt = this.now() + 1e-3;
+      if (e.target.closest('#panel [data-act="heal"]:not(.cant), #panel [data-act="gheal"]:not(.cant)')) this._healAt = this.now() + 1e-3;
     }, true);
     // a tap on a grey (.cant) action in the panel: the greyed lesson's deed (its refusal is the game's own toast)
     document.addEventListener('click', e => { const t = e.target && e.target.closest && e.target.closest('#panel .cant'); if (t) this._greyAt = this.now() + 1e-3; }, true);
@@ -3590,9 +3590,11 @@ const Prologue = {
     if (!window.Deck || !Deck.prologue) return null;
     const g = Scenarios.game();
     const col = Deck.col ? Deck.col() : null, key = 'pro:' + g;
-    if (col && col.runs && col.runs[key]) return { ok: true, again: true, cards: col.runs[key].map(c => ({ id: c.id, tier: c.tier, bonus: false })) };
+    // the journey's gold rides with its card (Deck.prologue, CFG.GOLD.PROLOGUE)
+    const paid = () => (col && col.goldRuns && col.goldRuns[key]) || 0;
+    if (col && col.runs && col.runs[key]) return { ok: true, again: true, cards: col.runs[key].map(c => ({ id: c.id, tier: c.tier, bonus: false })), gold: paid() };
     const got = Deck.prologue(g, S.runId || (window.Backend && Backend.runId) || null);
-    return got ? { ok: true, cards: [{ id: got.id, tier: got.tier, bonus: false }] } : { ok: false, why: 'journey' };
+    return got ? { ok: true, cards: [{ id: got.id, tier: got.tier, bonus: false }], gold: got.gold || 0 } : { ok: false, why: 'journey', gold: 0 };
   },
   // the end screen's two doors, or null off the journey
   endRow(win) {
@@ -3786,7 +3788,7 @@ body.pro-nobuild #bmToggle, body.pro-nobuild #buildmenu, body.pro-nobuild #panel
 #proDraft .peBody { min-width: 0; flex: 1; }
 #proDraft .peName { display: block; margin: 0 0 5px; font: 700 11px/1 'Cinzel','Times New Roman',Georgia,serif; letter-spacing: 1.6px; text-transform: uppercase; color: #f2cd6a; }
 #proDraft .peTxt { margin: 0; font: 600 15px/1.38 Georgia,'Times New Roman',serif; color: #f1e5cb; text-shadow: 0 2px 0 rgba(0,0,0,.7); }
-#scrTitle.pro #btnTitleNew, #scrTitle.pro #btnTitleBoard, #scrTitle.pro #btnTitleCards, #scrTitle.pro #btnTitleLoad { display: none !important; }
+#scrTitle.pro #btnTitleNew, #scrTitle.pro #btnTitleBoard, #scrTitle.pro #btnTitleCards, #scrTitle.pro #btnTitleLoad, #scrTitle.pro #btnTitleStore { display: none !important; }
 #scrTitle.pro #btnContinue.cant { display: none !important; }
 #scrTitle.pro .trow3 { grid-template-columns: 1fr 1fr; }
 /* THE BEGIN PLATE (build 206 — the operator, on two Begin buttons: "clean

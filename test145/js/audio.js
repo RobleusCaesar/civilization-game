@@ -271,6 +271,7 @@ const Sound = {
     thunder: 1.2, impact: 2.0,   // the sky's two voices: one strike, one fall
     done: 0.30, train: 0.30, place: 0.20,
     tick: 0.05, bad: 0.25,
+    coin: 0.045, purse: 0.6,     // a stream of coins landing, and the purse settling
   },
   _last: {},          // kind -> last time it sounded, in ctx time
   _live: 0,           // how many voices are sounding right now
@@ -433,6 +434,23 @@ const Sound = {
     done(t, v) {
       [523, 659, 784].forEach((hz, i) =>
         this._note({ at: t, delay: i * 0.075, hz, dur: 0.30, type: 'sine', gain: 0.11 * v }));
+    },
+    /* THE COIN (js/gold.js): one gold piece landing in the purse — a bright
+       struck-metal ping, two inharmonic partials over a hair of noise, its
+       pitch nudged each time so a stream of them chimes rather than drills */
+    coin(t, v) {
+      const k = 1 + (((this._coinN = ((this._coinN | 0) + 1) % 7) - 3) * 0.035);
+      this._note({ at: t, hz: 2349 * k, dur: 0.16, type: 'sine', gain: 0.075 * v, atk: 0.002 });
+      this._note({ at: t, hz: 3521 * k, dur: 0.10, type: 'sine', gain: 0.040 * v, atk: 0.002 });
+      this._noise({ at: t, hz: 6200, to: 4200, dur: 0.04, q: 1.4, gain: 0.05 * v, atk: 0.002 });
+    },
+    /* …and THE PURSE settling: a rising run of the same metal, a fuller ring
+       at the top, and a soft shimmer after it */
+    purse(t, v) {
+      [1568, 1976, 2349, 3136].forEach((hz, i) =>
+        this._note({ at: t, delay: i * 0.055, hz, dur: 0.34, type: 'sine', gain: 0.07 * v, atk: 0.003 }));
+      this._note({ at: t, delay: 0.22, hz: 1046, dur: 0.6, type: 'triangle', gain: 0.07 * v, lp: 3200 });
+      this._noise({ at: t, delay: 0.2, hz: 7000, to: 9000, dur: 0.5, q: 0.7, gain: 0.03 * v, atk: 0.05, filter: 'bandpass' });
     },
     hit(t, v) {
       this._noise({ at: t, hz: 260, to: 110, dur: 0.10, q: 0.9, gain: 0.20 * v });

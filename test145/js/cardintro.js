@@ -215,7 +215,8 @@ const CardIntro = {
       earn: {
         kick: 'How to earn', title: 'Earn them',
         sub: 'Every victory earns a card, and so do hard-fought losses.',
-        win: { h: 'Victory', p: 'A good win +1 card, a hard-fought win +2 cards.' },
+        // build 223: a hard-fought win's second card is a chance now (CFG.CARDS.BONUS), and the line says so
+        win: { h: 'Victory', p: 'A good win +1 card, a hard-fought win a chance at +2 cards.' },
         loss: { h: 'A hard-fought defeat', p: 'Still a card, if you did the work.' },
         one: '+1 card', two: '+2 cards',
         foot: 'Strike your banner and you leave with nothing.',
