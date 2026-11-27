@@ -3788,7 +3788,7 @@ body.pro-nobuild #bmToggle, body.pro-nobuild #buildmenu, body.pro-nobuild #panel
 #proDraft .peBody { min-width: 0; flex: 1; }
 #proDraft .peName { display: block; margin: 0 0 5px; font: 700 11px/1 'Cinzel','Times New Roman',Georgia,serif; letter-spacing: 1.6px; text-transform: uppercase; color: #f2cd6a; }
 #proDraft .peTxt { margin: 0; font: 600 15px/1.38 Georgia,'Times New Roman',serif; color: #f1e5cb; text-shadow: 0 2px 0 rgba(0,0,0,.7); }
-#scrTitle.pro #btnTitleNew, #scrTitle.pro #btnTitleBoard, #scrTitle.pro #btnTitleCards, #scrTitle.pro #btnTitleLoad, #scrTitle.pro #btnTitleStore { display: none !important; }
+#scrTitle.pro #btnTitleNew, #scrTitle.pro #btnTitleBoard, #scrTitle.pro #btnTitleCards, #scrTitle.pro #btnTitleStore { display: none !important; }
 #scrTitle.pro #btnContinue.cant { display: none !important; }
 #scrTitle.pro .trow3 { grid-template-columns: 1fr 1fr; }
 /* THE BEGIN PLATE (build 206 — the operator, on two Begin buttons: "clean
