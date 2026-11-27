@@ -22,6 +22,15 @@
    seen on this device. */
 const PATCH_NOTES = [
   {
+    build: 222, date: '2026-11-27', title: 'Heal a whole army at once',
+    items: [
+      'Select a group of soldiers or ships with anyone hurt, and a red heart appears beside the info button. One tap heals everyone standing where they can be mended, by your hall, a war camp or a dock.',
+      'Short of food? The heart heals your most valuable soldiers first, as many as you can pay for.',
+      'Hurt soldiers too far away walk home, are healed when they arrive and stay there, so you can win a fight in the woods and send the wounded back in one tap. They still come back veterans.',
+      'The map, your cards and the menu now show at the top right of the screen in Firefox and Safari on a laptop.',
+    ],
+  },
+  {
     build: 219, date: '2026-11-23', title: 'A bigger, clearer look',
     items: [
       'The bar across the top is one carved walnut panel in aged bronze, with no boxes in it. Every good wears its own drawn picture beside a larger total: meat for food, logs for wood, stone blocks, gold nuggets and a pair of villagers for your people.',

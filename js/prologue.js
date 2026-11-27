@@ -2831,7 +2831,7 @@ const Prologue = {
       const c = e.target && e.target.closest;
       if (!c) return;
       if (e.target.closest('#armyBar button')) this._bannerAt = this.now() + 1e-3;
-      if (e.target.closest('#panel [data-act="heal"]:not(.cant)')) this._healAt = this.now() + 1e-3;
+      if (e.target.closest('#panel [data-act="heal"]:not(.cant), #panel [data-act="gheal"]:not(.cant)')) this._healAt = this.now() + 1e-3;
     }, true);
     // a tap on a grey (.cant) action in the panel: the greyed lesson's deed (its refusal is the game's own toast)
     document.addEventListener('click', e => { const t = e.target && e.target.closest && e.target.closest('#panel .cant'); if (t) this._greyAt = this.now() + 1e-3; }, true);

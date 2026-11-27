@@ -312,6 +312,7 @@ node tests/foe-notes.mjs       # enemy/raider intel toasts are gated by difficul
 node tests/tower-archer-miss.mjs # Lv1 towers miss 1/3, base archers miss 1/4; the player's towers fire nothing by themselves
 node tests/sapper-deselect-heal.mjs # sapper dispatch deselects; sapper heals at the TC
 node tests/heal-limit.mjs      # at most 3 heals/unit per rolling 60s real-time window
+node tests/group-heal.mjs      # a hurt party wears a heart beside the ℹ: one tap mends all in the healing ground, the dearest first as far as the food goes; the far hurt walk home, are mended there and stay; a fleet at a dock alike
 node tests/bridge-resource-shore.mjs # a resource-shored bank is bridgeable; no silent failures; reinforcing takes days and a sapper
 node tests/barb-sense.mjs      # barbarians attack any land unit, leave when stuck, land smart
 node tests/rival-crossing.mjs  # AI reaches its own works, eats before hoarding, bridges around towers; a stuck blind chief still crosses
@@ -3968,6 +3969,37 @@ also heal at the Town Center now — they're a land unit like any other and
 `CFG.HEAL_FOOD.sapper` entry, which alone gated the whole heal UI off. Its
 price (30) matches its food line item at training, the same convention as
 villager/defender/archer.
+
+**THE PARTY HEALS AT ONE TAP** (`UI.healPlan` / `healBtn` / `groupHeal` /
+`sendHome` / `tickHealTrips` / `healUnit`, tests/group-heal.mjs — operator,
+build 222: "if you have a group of soldiers and anyone in that group has
+damage… add a Heart button next to the 'i' button… If you don't have enough
+to heal the group… prioritize most expensive / higher level units first…
+we need to implement for the navy too… Maybe we should pilot that"). A
+selected party (a war party, a fleet, an army's banner) with anyone hurt
+wears a red heart in its header beside the ℹ (`.pheal`, the rank button's
+place; the header takes `.k3` so the title clears it), gone when nobody is
+hurt, grey (`.cant`, still tapped for its reason) when a tap could do
+nothing; its state rides the group's `panelSig` (`healSig`), so it comes and
+goes without a tap. ONE PLAN (`healPlan`) answers the button, its title and
+the tap: the hurt sorted dearest first (`CFG.HEAL_FOOD` of the kind — the
+ranks climb it — then the most hurt), each the larder can still pay for
+taken, one resting under the heal limit or already walking home passed over.
+In the healing ground (`Bld.inHealZone`: the hall's ring, a war camp, a dock
+for a hull) he is mended at once through the one heal (`healUnit`, which the
+unit's own Heal shares: paid, counted against the limit, the float, a
+veteran made); **THE PILOT**: one beyond it walks home — to a tile of the
+nearest ground that mends him, two to a tile, his doctrine and siege post
+let go, a Defend stance kept — on a `move` task (which no foe's acquisition
+interrupts) and `u.healTrip` (the tile, in the save), and is mended the
+moment he stands in it, paying then (`tickHealTrips`, from `UI.refresh`'s
+quarter second; a larder short by then says so in the log). He stays where
+he was mended. Any other order (the task no longer that move) calls the trip
+off and nothing is paid. The healthy hold where they are; a bow at his tower
+post is never sent. Veterans made by one tap are said once (`vetsNews`). The
+journey's heal lesson counts the heart's tap as its deed. If walking home
+proves too easy, the pilot comes out by passing nothing to `sendHome` (the
+plan's `go` list) and the heart then mends only those already home.
 
 **Heal limit** (`tests/heal-limit.mjs`): closes the "stand in the Town Center
 ring and spam Heal through a live fight" exploit — a unit topped off between

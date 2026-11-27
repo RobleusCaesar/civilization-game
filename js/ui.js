@@ -3532,7 +3532,7 @@ const UI = {
       const aboard = mem.reduce((n, o) => n + (Units.isTransport(o) && o.cargo ? o.cargo.length : 0), 0);
       // the party (a war party, or villagers, sappers, boats in hand) picks the panel
       return 'g|' + this.groupClass(this.sel.ids) + '|' + mem.length + '|' + (defEl > 0) + '|' + mem.every(o => !Units.canDefend(o) || !o.defend) + '|' + gStrat +
-        '|' + busy + '|' + siegeable + '|' + (aboard > 0);
+        '|' + busy + '|' + siegeable + '|' + (aboard > 0) + '|' + this.healSig(this.sel.ids);
     }
     if (this.sel.type === 'bridge') {
       const br = Bld.bridgeAt(this.sel.x, this.sel.y);
@@ -3631,6 +3631,156 @@ const UI = {
     const base = CFG.HEAL_FOOD[u.kind];
     if (!base) return 0;
     return Math.max(1, Math.ceil((1 - u.hp / u.maxhp) * base));
+  },
+  /* ONE HEAL, whoever asks (the unit's Heal, the party's heart, a walk home that
+     arrives): the food paid, the tally the heal limit counts, the hit points, the
+     float and the standing it brings (Units.makeVeteran). The caller has checked
+     the zone, the limit and the price; this answers what it cost and whether he
+     came back a veteran. */
+  healUnit(u) {
+    const cost = this.healCost(u);
+    S.res.food -= cost;
+    this.noteHeal(u);
+    u.hp = u.maxhp;
+    R.float(u.x, u.y - 0.5, '❤', '#8ae08a');
+    return { cost, vet: !!Units.makeVeteran(u) };
+  },
+  /* THE PARTY HEALS AT ONE TAP (UI.healPlan / groupHeal / healBtn / tickHealTrips,
+     tests/heal-limit.mjs §5–9 — operator, build 222: "if you have a group of
+     soldiers and anyone in that group has damage, when they're within the TC
+     limit, add a Heart button next to the 'i' button, when you click it, you
+     heal the group. If you don't have enough to heal the group … the game
+     decides what units to heal (prioritize most expensive / higher level units
+     first) … Whatever we decide we need to implement for the navy too … Maybe
+     we should pilot that"). The party's hurt are taken most valuable first (the
+     dearest heal of their kind, CFG.HEAL_FOOD — the ranks climb it — then the
+     most hurt), each one the larder can still pay for, a unit the heal limit is
+     resting passed over. One standing in the healing ground (Bld.inHealZone) is
+     mended now; one beyond it WALKS HOME — to the nearest ground that mends him,
+     the hall, a war camp or a dock for a hull — and is mended the moment he
+     stands in it, paying then (the PILOT: a heal is still earned by the walk,
+     out of the fight; he stays where he was mended). The healthy hold where they
+     are. Never a bow at his tower post (his post is his own), a ghost or a
+     unit with nowhere to mend. */
+  healPlan(ids) {
+    const mem = (ids || []).map(id => Units.get(id)).filter(Boolean);
+    const hurt = mem.filter(o => o.owner === 'P' && o.hp < o.maxhp && CFG.HEAL_FOOD[o.kind] && !o.spectral);
+    hurt.sort((a, b) => CFG.HEAL_FOOD[b.kind] - CFG.HEAL_FOOD[a.kind] || a.hp / a.maxhp - b.hp / b.maxhp || a.id - b.id);
+    const plan = { hurt: hurt.length, now: [], go: [], cost: 0, poor: 0, rest: 0, far: 0, walking: 0, cheapest: Infinity };
+    let left = S.res.food;
+    for (const o of hurt) {
+      if (this.healThrottled(o)) { plan.rest++; continue; }
+      const z = Bld.healZoneFor(o), here = !!z && Math.hypot(o.x - z.x, o.y - z.y) <= z.r;
+      if (!here && o.healTrip) { plan.walking++; continue; }   // already on his way home
+      if (!here && (!z || this.sentUp(o))) { plan.far++; continue; }
+      const c = this.healCost(o);
+      plan.cheapest = Math.min(plan.cheapest, c);
+      if (c > left) { plan.poor++; continue; }
+      left -= c;
+      if (here) { plan.now.push(o); plan.cost += c; } else plan.go.push(o);
+    }
+    plan.ok = plan.now.length + plan.go.length > 0;
+    return plan;
+  },
+  // the button's words: what a tap does, or why it can do nothing
+  healPlanLine(p) {
+    if (p.ok) {
+      const a = [];
+      if (p.now.length) a.push(`Heal ${p.now.length} for ${p.cost} food`);
+      if (p.go.length) a.push(`send ${p.go.length} home to heal`);
+      const s = a.join(', ');
+      return s.charAt(0).toUpperCase() + s.slice(1) + (p.poor ? ` (not enough food for ${p.poor} more)` : '');
+    }
+    if (p.poor) return `Not enough food: ${p.cheapest} food heals one`;
+    if (p.rest) return 'Healed enough — let them rest';
+    if (p.walking) return p.walking === 1 ? 'Already on his way home to heal' : 'Already on their way home to heal';
+    if (p.far) return `Nowhere to heal them: build a Town Center${this.sel && this.sel.ids && this.sel.ids.some(id => { const o = Units.get(id); return o && Units.isNaval(o); }) ? ' or a Dock' : ''}`;
+    return 'Nobody to heal';
+  },
+  HEART_SVG: '<svg viewBox="0 0 20 20" width="20" height="20" aria-hidden="true"><path d="M10 17.2 3.4 10.6C1.6 8.8 1.7 5.7 3.7 4.2c1.8-1.4 4.4-1 5.7.7L10 5.7l.6-.8c1.3-1.7 3.9-2.1 5.7-.7 2 1.5 2.1 4.6.3 6.4Z" fill="#2a0c08" stroke="#2a0c08" stroke-width="3" stroke-linejoin="round"/><path d="M10 17.2 3.4 10.6C1.6 8.8 1.7 5.7 3.7 4.2c1.8-1.4 4.4-1 5.7.7L10 5.7l.6-.8c1.3-1.7 3.9-2.1 5.7-.7 2 1.5 2.1 4.6.3 6.4Z" fill="#d9433a"/><path d="M5 6.2c.8-.9 2.1-1 3-.3" fill="none" stroke="#ffb3a6" stroke-width="1.5" stroke-linecap="round"/></svg>',
+  // the heart in the party's header: there while anyone in hand is hurt, grey while a tap could do nothing
+  healBtn(ids) {
+    const p = this.healPlan(ids);
+    if (!p.hurt) return '';
+    const name = this.healPlanLine(p);
+    return `<button class="abtn pheal${p.ok ? '' : ' cant'}" data-act="gheal" title="${name}" aria-label="${name}">${this.HEART_SVG}</button>`;
+  },
+  // its state for the panel's signature: none hurt, a tap that acts, or a grey one
+  healSig(ids) { const p = this.healPlan(ids); return !p.hurt ? '-' : p.ok ? 'h' : 'c'; },
+  groupHeal(ids) {
+    const p = this.healPlan(ids);
+    if (!p.ok) {
+      this.toast(this.healPlanLine(p), true);
+      if (p.poor && typeof Feel !== 'undefined' && Feel.short) Feel.short({ food: p.cheapest });
+      return p;
+    }
+    const vets = [];
+    for (const o of p.now) { const r = this.healUnit(o); if (r.vet) vets.push(o); }
+    this.sendHome(p.go);
+    this.vetsNews(vets);
+    this.toast(this.healPlanLine(p));
+    return p;
+  },
+  /* the walk home: each hurt one to a tile of the ground that mends him nearest
+     his side of it, two to a tile (the ranks' own rule), his doctrine and his
+     marks let go (he is leaving the fight); u.healTrip is the tile, and a move
+     anywhere else lets the trip go (tickHealTrips) */
+  sendHome(list) {
+    const used = {};
+    for (const o of list) {
+      const z = Bld.healZoneFor(o); if (!z) continue;
+      const dom = Units.domain(o), d = Math.hypot(o.x - z.x, o.y - z.y) || 1;
+      const ax = z.x + (o.x - z.x) / d * z.r * 0.55, ay = z.y + (o.y - z.y) / d * z.r * 0.55;
+      let best = null, bd = Infinity;
+      const R0 = Math.ceil(z.r);
+      for (let y = Math.floor(z.y) - R0; y <= Math.floor(z.y) + R0; y++)
+        for (let x = Math.floor(z.x) - R0; x <= Math.floor(z.x) + R0; x++) {
+          if (!MapGen.onBoard(x, y) || (used[x + ',' + y] || 0) >= 2) continue;
+          if (Math.hypot(x + 0.5 - z.x, y + 0.5 - z.y) > z.r - 0.6) continue;
+          if (!Path.passable(x, y, 'P', dom) || (dom !== 'water' && Bld.at(x, y))) continue;
+          const dd = Math.hypot(x + 0.5 - ax, y + 0.5 - ay);
+          if (dd < bd) { bd = dd; best = { x, y }; }
+        }
+      if (!best) continue;
+      used[best.x + ',' + best.y] = (used[best.x + ',' + best.y] || 0) + 1;
+      o.strat = null; o.siegePost = null;   // a Defend stance is kept: the walk home is respected, and home is the ground it holds
+      Units.moveTo(o, best.x, best.y);
+      o.healTrip = { x: best.x, y: best.y };
+    }
+  },
+  // the walkers home: mended the moment they stand where the land mends (paid then)
+  tickHealTrips() {
+    const vets = [], poor = [];
+    let n = 0, food = 0;
+    for (const o of S.units) {
+      const t = o.healTrip;
+      if (!t) continue;
+      if (o.owner !== 'P' || o.hp >= o.maxhp) { o.healTrip = null; continue; }
+      if (Bld.inHealZone(o)) {
+        o.healTrip = null;
+        if (this.healThrottled(o)) continue;
+        if (S.res.food < this.healCost(o)) { poor.push(o); continue; }
+        const r = this.healUnit(o); n++; food += r.cost;
+        if (r.vet) vets.push(o);
+        continue;
+      }
+      // another order, or the walk ended short of the ground: the trip is off
+      if (!o.task || o.task.type !== 'move' || o.task.x !== t.x || o.task.y !== t.y) o.healTrip = null;
+    }
+    this.vetsNews(vets);
+    if (n) G.log(n === 1 ? `A soldier home from the field is healed for ${food} food` : `${n} home from the field are healed for ${food} food`, 'note');
+    if (poor.length) G.log(`Home to heal, but not enough food for ${poor.length === 1 ? 'one' : poor.length}`, true);
+  },
+  // the veterans a heal made: each one seen and popped, the news said once
+  vetsNews(list) {
+    if (!list.length) return;
+    if (list.length === 1) { this.veteranNews(list[0]); return; }
+    for (const o of list) {
+      R.float(o.x, o.y - 0.9, '⬆ Veteran', '#f0c75a');
+      if (window.GoldFX && GoldFX.popUnit) GoldFX.popUnit(o, 'rank');
+    }
+    if (typeof Sound !== 'undefined' && Sound.ui) Sound.ui('complete');
+    G.log(`${list.length} soldiers are now Veterans: ` + this.veteranLine().replace(/^A veteran: /, '').replace(/\.$/, ''), 'note');
   },
   /* HEAL LIMIT — at most CFG.HEAL_LIMIT_N heals per unit inside any real
      HEAL_LIMIT_MS window, so a unit standing in the TC ring can't just be
@@ -4459,10 +4609,11 @@ const UI = {
       const gLaden = this.sel.ids.map(id => Units.get(id)).filter(o => o && Units.isTransport(o) && o.cargo && o.cargo.length);
       const gAboard = gLaden.reduce((n, o) => n + o.cargo.length, 0);
       const levyBand = !fleet && this.sel.ids.every(id => { const o = Units.get(id); return o && Units.isLevied(o); });
-      html += `<div class="phead"><canvas id="pIcon"></canvas><div>
+      const gHeal = this.healBtn(this.sel.ids);
+      html += `<div class="phead${gHeal ? ' k3' : ''}"><canvas id="pIcon"></canvas><div>
         <div class="ptitle">${fleet ? '⚓ Fleet' : levyBand ? '🪓 The Levy' : '⚔️ War Party'} <span style="color:var(--gold)">(${this.sel.ids.length})</span></div>
         <div class="psub">${this.groupComposition(this.sel.ids)}</div></div>
-        <button class="abtn" id="helpToggle" title="${this.helpHidden ? 'Show unit tips' : 'Hide unit tips'}">${this.helpHidden ? 'ℹ️' : '−'}</button><button class="abtn" id="panelClose">✕</button></div>`;
+        ${gHeal}<button class="abtn" id="helpToggle" title="${this.helpHidden ? 'Show unit tips' : 'Hide unit tips'}">${this.helpHidden ? 'ℹ️' : '−'}</button><button class="abtn" id="panelClose">✕</button></div>`;
       // SAVED ARMIES (tests/army-groups.mjs): a military group can be saved to
       // a numbered banner — lowest free slot of three — and recalled from the
       // right-rail helmet buttons. A group that IS a saved army offers Remove.
@@ -4512,6 +4663,8 @@ const UI = {
       });
       const gremove = panel.querySelector('[data-act="garmyremove"]');
       if (gremove) gremove.addEventListener('click', () => this.removeArmy(armyN));
+      const gheal = panel.querySelector('[data-act="gheal"]');
+      if (gheal) gheal.addEventListener('click', () => { this.groupHeal(this.sel.ids); this.renderPanel(); });
       const gstop = panel.querySelector('[data-act="stop"]');   // renders only while gBusy
       if (gstop) gstop.addEventListener('click', () => {
         for (const id of this.sel.ids) {
@@ -4866,14 +5019,12 @@ const UI = {
         if (!Bld.inHealZone(u2)) { this.toast(Units.isNaval(u2) ? 'Ships heal at a Dock — move closer' : this.healWhere(u2) === 'Town Center' ? 'Can only heal within the Town Center grounds' : 'Can only heal near the Town Center or a War Camp', true); return; }
         const cost = this.healCost(u2);
         if (S.res.food < cost) { this.toast('Not enough food', true); if (typeof Feel !== 'undefined' && Feel.short) Feel.short({ food: cost }); return; }
-        S.res.food -= cost;
-        this.noteHeal(u2);
-        u2.hp = u2.maxhp;
-        R.float(u2.x, u2.y - 0.5, '❤', '#8ae08a');
-        this.toast(`Healed for ${cost} food`);
         // VETERANS OF THE FIELD: hurt in a fight and mended here, a soldier
-        // comes back a veteran of his rank (Units.makeVeteran)
-        if (Units.makeVeteran(u2)) this.veteranNews(u2);
+        // comes back a veteran of his rank (Units.makeVeteran, inside healUnit)
+        const hr = this.healUnit(u2);
+        u2.healTrip = null;
+        this.toast(`Healed for ${hr.cost} food`);
+        if (hr.vet) this.veteranNews(u2);
         this.renderPanel();
       });
       const gobuild = panel.querySelector('[data-act="gobuild"]');
@@ -5124,6 +5275,7 @@ const UI = {
     name('gold', 'Gold ' + this.fmtRes(S.res.gold));
     name('pop', 'Population ' + pop.replace('/', ' of '));
     name('day', 'Day ' + S.day);
+    try { this.tickHealTrips(); } catch (e) {}   // the party's hurt walking home to be mended
     this.refreshMenu();
     if (this.sel) this.refreshPanel();
   },
