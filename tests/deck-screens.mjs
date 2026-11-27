@@ -175,7 +175,8 @@ window.__shown = (el) => !!el && el.getClientRects().length > 0 && getComputedSt
     return out;
   });
   ck('theSwitchThrownOffIsOff', a.shipsOff);
-  ck('offTheTitleIsTodaysTitle', !a.plaque && a.row === 3 && !a.four, `plaque ${a.plaque}, ${a.row} secondary plaques, folded ${a.four}`);
+  // Settings and the Guide (Load moved into the Settings in build 224; the Store goes with the deck)
+  ck('offTheTitleIsTodaysTitle', !a.plaque && a.row === 2 && !a.four, `plaque ${a.plaque}, ${a.row} secondary plaques, folded ${a.four}`);
   ck('offAVictoryIsTodaysScene', a.endWin === 'endgame' && a.winScene && a.pane === 'none' && a.nameHome && /victoryMode/.test(a.winMode) && !/ceMode/.test(a.winMode),
     `scene ${a.winScene}, tally ${a.pane}, name box home ${a.nameHome}, ${a.winMode}`);
   ck('offADefeatIsTodaysScene', a.lossScene && /defeatMode/.test(a.lossMode) && !/ceMode/.test(a.lossMode), a.lossMode);
@@ -213,7 +214,8 @@ window.__shown = (el) => !!el && el.getClientRects().length > 0 && getComputedSt
   ck('theTitleWearsACardsPlaque', a.on && a.inRow && a.four && a.label === 'Cards' && !a.svg && !a.big && !a.emoji,
     `in the secondary row ${a.inRow}, folded ${a.four}, "${a.label}", icon ${a.svg}, emoji ${a.emoji}`);
   // the three, and since build 223 the Store with the purse on it (js/gold.js)
-  ck('andTheHeroPlaquesAreStillThree', a.heroes === 3 + (a.store ? 1 : 0), a.heroes + ' hero plaques' + (a.store ? ' (the Store among them)' : ''));
+  // the three — the Store a small plate beside the Cards since build 224 (js/gold.js)
+  ck('andTheHeroPlaquesAreStillThree', a.heroes === 3, a.heroes + ' hero plaques' + (a.store ? ' (the Store in the row)' : ''));
   ck('theStarterHandIsDealtOnceOnTheTitle', a.total === 3 && a.total2 === 3 && a.one === 1 && a.n === '3', `${a.hand}, plaque says ${a.n}`);
   /* the same measurement tests/boot.mjs noTitleLabelRunsOffItsPlaque makes,
      with the fourth plaque in the row: four across cannot fit "Settings",

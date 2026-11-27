@@ -463,9 +463,49 @@ const nightReqs = reqs => reqs.filter(u => /assets\/ui\/title\//.test(u)).map(u 
       cant: c.classList.contains('cant'), contF: c.querySelector('.t2f') ? getComputedStyle(c.querySelector('.t2f')).filter : 'no frame',
       contOp: getComputedStyle(c).opacity, small: c.querySelector('small').textContent.trim() };
   });
-  ck('newGameIsTheOneLitPlate', r.lit === 'lit' && r.board === 'plate' && r.cont === 'plate' && r.plates.filter(q => q.kind === 'lit').length === 1,
-    `New Game ${r.lit}, Leaderboard ${r.board}, Continue ${r.cont}, lit: ${r.plates.filter(q => q.kind === 'lit').map(q => q.id).join(', ')}`);
+  ck('newGameIsTheOneLitPlate', r.lit === 'lit' && r.cont === 'plate' && r.plates.filter(q => q.kind === 'lit').length === 1,
+    `New Game ${r.lit}, Continue ${r.cont}, lit: ${r.plates.filter(q => q.kind === 'lit').map(q => q.id).join(', ')}`);
+  /* build 224 — the operator: "Give leaderboard back its blue color, and make
+     store and cards buttons golden. Keeps the menu from being too
+     monotonous": the kinds, and the faces they really paint (read off the
+     drawn frame's own gradient, so a kind with no face of its own fails) */
+  const hue = await p.evaluate(() => {
+    const face = id => { const e = document.getElementById(id), st = e && e.querySelector(':scope > .t2f linearGradient stop');
+      return { kind: e ? e.dataset.t2 : 'absent', c: st ? st.getAttribute('stop-color') : '' }; };
+    const rgb = h => { const m = /^#(..)(..)(..)$/.exec(h) || []; return m.slice(1).map(x => parseInt(x, 16)); };
+    const o = { board: face('btnTitleBoard'), store: face('btnTitleStore'), cards: face('btnTitleCards'), quiet: face('btnTitleSettings') };
+    for (const k in o) o[k].rgb = rgb(o[k].c);
+    return o;
+  });
+  const blue = c => c.length === 3 && c[2] > c[0] + 30 && c[2] > c[1];
+  const gold = c => c.length === 3 && c[0] > 200 && c[1] > 160 && c[2] < c[1] - 40;
+  ck('theLeaderboardIsBlueAndTheStoreAndCardsAreGold', hue.board.kind === 'navy' && blue(hue.board.rgb) && hue.store.kind === 'gold' && gold(hue.store.rgb)
+    && hue.cards.kind === 'gold' && gold(hue.cards.rgb) && !blue(hue.quiet.rgb) && !gold(hue.quiet.rgb),
+    `Leaderboard ${hue.board.kind} ${hue.board.c}, Store ${hue.store.kind} ${hue.store.c}, Cards ${hue.cards.kind} ${hue.cards.c}, Settings ${hue.quiet.kind} ${hue.quiet.c}`);
   const odd = r.plates.filter(q => !q.notch || q.caps || q.grain || (q.kind === 'lit') !== q.gold);
+  /* LOAD LEFT THE TITLE FOR THE SETTINGS (build 224 — "Move load from main
+     menu to settings; make it clear where load is it inside settings. Move
+     store to the small load button spot, recenter the buttons vertically"):
+     no Load plate; the Store a small plate in the secondary row, after the
+     Guide and before the Cards, its purse beside its word; the hero plates
+     Continue, New Game and the Leaderboard; the logo and the menu one block
+     in the middle of the column; and the Settings' Load & Save tab opens the
+     Load page, whose back arrow comes home to that tab */
+  const lay = await p.evaluate(() => {
+    const row = [...document.querySelectorAll('#scrTitle .trow3 .abtn')].map(e => e.id);
+    const heroes = [...document.querySelectorAll('#scrTitle .tmenu > .abtn')].filter(e => e.getBoundingClientRect().width > 0).map(e => e.id);
+    const col = document.querySelector('#scrTitle .tcol'), cs = getComputedStyle(col), cr = col.getBoundingClientRect();
+    const top = document.querySelector('#scrTitle .thead').getBoundingClientRect().top;
+    const last = [...document.querySelectorAll('#scrTitle .tmenu .abtn')].reduce((m, e) => Math.max(m, e.getBoundingClientRect().bottom), 0);
+    const inTop = cr.top + parseFloat(cs.paddingTop), inBot = cr.bottom - parseFloat(cs.paddingBottom);
+    const st = document.getElementById('btnTitleStore');
+    return { load: !!document.getElementById('btnTitleLoad'), row, heroes, off: +(((top + last) / 2) - ((inTop + inBot) / 2)).toFixed(1),
+      purse: st ? (st.querySelector('.tGoldN') || {}).textContent : null, gold: Gold.short(Gold.balance()), big: st ? st.classList.contains('big') : null };
+  });
+  ck('loadLeftTheTitleAndTheStoreTookItsPlace', !lay.load && lay.row.join() === 'btnTitleSettings,btnTitleHow,btnTitleStore,btnTitleCards' && lay.big === false
+    && lay.heroes.join() === 'btnContinue,btnTitleNew,btnTitleBoard' && lay.purse === lay.gold,
+    `Load ${lay.load}; the row ${lay.row.join(' ')}; heroes ${lay.heroes.join(' ')}; the Store's purse "${lay.purse}" (${lay.gold})`);
+  ck('andTheMenuStandsInTheMiddle', Math.abs(lay.off) <= 2, `the logo and menu block ${lay.off}px off the column's middle`);
   ck('andEveryPlateIsTheSettingsPagesPlate', r.plates.length >= 7 && odd.length === 0,
     odd.length ? JSON.stringify(odd) : `${r.plates.length} plates: the cut corner, the line(s), no caps or grain; the gold line only on the lit one`);
   ck('andANoSavesContinueSitsFlat', r.cant && r.contF === 'none' && r.contOp === '1' && r.small.length > 0, `cant=${r.cant}, its frame's drop: ${r.contF}, "${r.small}"`);
@@ -495,6 +535,24 @@ const nightReqs = reqs => reqs.filter(u => /assets\/ui\/title\//.test(u)).map(u 
   });
   ck('thePauseMenuIsUntouched', !!pause && pause.before !== 'none' && pause.after !== 'none' && !pause.frame, JSON.stringify(pause));
   const emb = await p.evaluate(() => document.querySelectorAll('#scrTitle .t2em').length);
+  // (last: it leaves the title and comes back, which plays the menu's pop-in again)
+  const ld = await p.evaluate(async () => {
+    const wait = ms => new Promise(r => setTimeout(r, ms));
+    document.getElementById('btnTitleSettings').click(); await wait(60);
+    const tab = document.querySelector('#scrSetx .sxTab[data-tab="saves"]');
+    const name = tab ? tab.querySelector('.sxTn').textContent : '';
+    tab.click(); await wait(60);
+    const btn = document.querySelector('#scrSetx .sxPane .sxCard:first-child [data-act="load"]');
+    const first = !!btn && btn.getBoundingClientRect().height >= 44;
+    btn.click(); await wait(60);
+    const opened = Screens.current;
+    document.getElementById('loadBack').click(); await wait(60);
+    const home = Screens.current + '/' + SettingsPage.tab;
+    document.querySelector('#scrSetx .sxBack').click(); await wait(60);
+    return { name, first, opened, home, title: Screens.current };
+  });
+  ck('andLoadLivesInTheSettingsLoadAndSaveTab', /Load/.test(ld.name) && ld.first && ld.opened === 'load' && ld.home === 'settings/saves' && ld.title === 'title',
+    `the tab "${ld.name}", its first card's Load ${ld.first} → ${ld.opened}; back → ${ld.home}; back again → ${ld.title}`);
   await o.ctx.close();
   const q = await open({ reduced: true, tag: 'reduced' });
   const still = await q.p.evaluate(() => {
@@ -642,7 +700,7 @@ const nightReqs = reqs => reqs.filter(u => /assets\/ui\/title\//.test(u)).map(u 
     said.push(`${w}x${h}: ${why.length ? why.join(', ') : 'seen — "' + r.text + '"'}`);
     if (why.length) said.fail = true;
     // every plaque the title shows (Continue, New game, Leaderboard, Settings,
-    // Guide, Load and the deck's Cards) is measured, so the probe is never vacuous
+    // Guide, the Store and the deck's Cards) is measured, so the probe is never vacuous
     const nPlaques = r.none ? 0 : r.plaques.split(' ').filter(Boolean).length;
     covered.push(`${w}x${h}: ${r.none ? 'no line to measure' : nPlaques < 7 ? 'only ' + nPlaques + ' plaques (' + r.plaques + ')' : r.under.length ? 'over ' + r.under.join(', ') : nPlaques + ' plaques clear'}`);
     if (r.none || nPlaques < 7 || r.under.length) covered.fail = true;

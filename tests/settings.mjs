@@ -218,8 +218,9 @@ const open = async (opts) => {
     o.tabs = tabsShown();
     // every control on every tab, named by what it does — the settings, and
     // over a game the pause's own six (build 214: the pause menu and the
-    // settings are one page; their ids are what the game presses)
-    const KNOWN = /^(tog:unithelp|tog:boxselect|tog:mute-sfx|tog:mute-music|vol:sfx|vol:music|cad:[0125]|in:sxChief|act:export-file|act:export-id|act:import-id|kind:(bug|idea|crash|other)|in:sxEmail|in:sxName|in:sxMsg|in:sxAttach|send|act:flush|in:btnPauseResume|in:btnPauseSave|in:btnPauseLoad|in:btnPauseHow|in:btnQuitTitle|in:btnResign)$/;
+    // settings are one page; their ids are what the game presses), and the
+    // Load & Save tab's way into the Load page (build 224: Load left the title)
+    const KNOWN = /^(tog:unithelp|tog:boxselect|tog:mute-sfx|tog:mute-music|vol:sfx|vol:music|cad:[0125]|in:sxChief|act:export-file|act:export-id|act:import-id|act:load|kind:(bug|idea|crash|other)|in:sxEmail|in:sxName|in:sxMsg|in:sxAttach|send|act:flush|in:btnPauseResume|in:btnPauseSave|in:btnPauseLoad|in:btnPauseHow|in:btnQuitTitle|in:btnResign)$/;
     o.controls = [];
     for (const t of SettingsPage.TABS) {
       SettingsPage.open(t.k);
@@ -340,9 +341,10 @@ const open = async (opts) => {
     const chief = !!document.querySelector('#scrSetx #sxChief');
     SettingsPage.open('saves');
     return { chief, file: !!document.querySelector('#scrSetx [data-act="export-file"]'), id: !!document.querySelector('#scrSetx [data-act="export-id"]'),
-      cards: document.querySelectorAll('#scrSetx .sxCard').length };
+      cards: document.querySelectorAll('#scrSetx .sxCard').length, load: !!document.querySelector('#scrSetx .sxCard:first-child [data-act="load"]') };
   });
-  ck('aCardWithNothingRealIsNotDrawn', !r.chief && !r.file && !r.id && r.cards === 1, JSON.stringify(r));
+  // the Saved Games card (Load, build 224) and the Autosave: nothing for a cloud or a game
+  ck('aCardWithNothingRealIsNotDrawn', !r.chief && !r.file && !r.id && r.cards === 2 && r.load, JSON.stringify(r));
   await ctx.close();
 }
 

@@ -30,6 +30,13 @@ const Gold = {
   on() { return !!(window.Deck && Deck.goldOn && Deck.goldOn()); },
   balance() { return this.on() ? Deck.gold() : 0; },
   fmt(n) { return Math.max(0, Math.floor(+n || 0)).toLocaleString('en-US'); },
+  // a small plate's purse: whole to 9,999, then shortened DOWN (12.4k), the HUD's rule
+  short(n) {
+    n = Math.max(0, Math.floor(+n || 0));
+    if (n < 10000) return this.fmt(n);
+    if (n < 1e6) { const k = Math.floor(n / 100) / 10; return (k >= 100 ? Math.floor(k) : k) + 'k'; }
+    return Math.floor(n / 1e5) / 10 + 'M';
+  },
   art(name) { return 'assets/ui/gold/' + name + '.png?v=' + ((typeof CFG !== 'undefined' && CFG.ART_V) || 1); },
 
   /* ---------------- where a purchase is decided ----------------
@@ -199,20 +206,25 @@ const Gold = {
   /* ---------------- THE TITLE: the Store's plate, the purse on it ----------------
      Screens.onTitle calls in before the night dresses its plates
      (TitleScreen.ICON names its pouch); the journey's title puts it away
-     with the deck's collection (prologue.js) */
+     with the deck's collection (prologue.js). Since build 224 it is a SMALL
+     plate in the secondary row, where Load stood (the operator: "Move load
+     from main menu to settings… Move store to the small load button spot"),
+     struck gold beside the Cards (TitleScreen.KIND), the purse in a coin
+     slot beside the word as the deck's count is beside the Cards' */
   onTitle() {
-    const menu = document.querySelector('#scrTitle .tmenu');
+    const row = document.querySelector('#scrTitle .trow3');
     let b = document.getElementById('btnTitleStore');
     if (!this.on()) { if (b) b.remove(); return; }
     this._css();
     this.testLink();
-    if (menu && !b) {
+    if (row && !b) {
       b = document.createElement('button');
-      b.className = 'abtn big';
+      b.className = 'abtn';
       b.id = 'btnTitleStore';
-      b.innerHTML = '<span class="blab">Store</span><span class="tPurse" aria-hidden="true">' + this.mark(20) + '<b class="tGoldN">0</b></span>';
+      b.innerHTML = '<span class="blab">Store<b class="tGold" aria-hidden="true">' + this.mark(12) + '<i class="tGoldN">0</i></b></span>';
       b.addEventListener('click', () => { if (window.Store) Store.open('title'); });
-      menu.insertBefore(b, menu.querySelector('.trow2') || null);
+      // after Settings and the Guide, before the Cards (whichever came first)
+      row.insertBefore(b, document.getElementById('btnTitleCards'));
     }
     this.paintTitle();
     this._warmStall();
@@ -238,7 +250,7 @@ const Gold = {
     const b = document.getElementById('btnTitleStore');
     if (!b) return;
     const g = this.balance();
-    b.querySelector('.tGoldN').textContent = this.fmt(g);
+    b.querySelector('.tGoldN').textContent = this.short(g);
     b.setAttribute('aria-label', 'Store, ' + this.fmt(g) + ' gold in your purse');
   },
 
@@ -419,12 +431,11 @@ const Gold = {
 ${gl}  100% { background-position: 0 0; }
 }
 @media (prefers-reduced-motion: reduce) { .gmark { animation: none; } .gcoin { animation: none; } }
-/* the Store's plate on the title: the purse at its right, the word centred */
-#btnTitleStore .tPurse { position: absolute; right: 18px; top: 50%; translate: 0 -50%; display: flex; align-items: center; gap: 6px;
-  pointer-events: none; }
-#btnTitleStore .tGoldN { font: 700 18px/1 var(--numfont); letter-spacing: 0; color: #ffe7a0; font-variant-numeric: tabular-nums;
-  text-shadow: 0 1px 0 #000, 0 0 8px rgba(255,200,80,0.3); }
-@media (max-width: 359px) { #btnTitleStore .tPurse { right: 12px; } #btnTitleStore .tGoldN { font-size: 16px; } }
+/* the Store's plate on the title: the purse in a coin slot beside the word
+   (the night dresses it, js/titlescreen.js; this is the plain page's) */
+#btnTitleStore .tGold { display: inline-flex; align-items: center; gap: 3px; margin-left: 7px; padding: 0 6px 0 3px; height: 18px;
+  border-radius: 9px; background: #1c140c; border: 1px solid #c9973e; box-sizing: border-box; pointer-events: none; }
+#btnTitleStore .tGoldN { font: 700 11px/1 var(--numfont); font-style: normal; letter-spacing: 0; color: #ffe7a0; font-variant-numeric: tabular-nums; }
 /* the Settings page's purse (js/settings.js) */
 #scrSetx .sxGold { display: flex; align-items: center; gap: 7px; flex: 0 0 auto; font: 700 24px/1 var(--numfont); color: #ffe7a0;
   text-shadow: 0 1px 0 #000; font-variant-numeric: tabular-nums; }

@@ -402,6 +402,20 @@ const MOCK = `
     out.plate = !!document.getElementById('btnTitleStore');
     out.fromTitle = Store.open('title') && Screens.current === 'store';
     out.items = document.querySelectorAll('#scrStore .stItem').length;
+    /* NO COUNT ON THE SHELF (build 224 — the operator: "remove the card
+       numbers in the store, you can buy as many as you want that you have
+       money for. No limits to the store right now"): the test deck holds one
+       of every card, and no ware says so; a purchase adds no badge either */
+    const marks = () => [...document.querySelectorAll('#scrStore .stItem')].filter(b => b.querySelector('.stHave') || /×\s*\d/.test(b.textContent)).length;
+    out.marks = marks();
+    const c0 = Deck.col(); c0.gold = 500; Deck.saveCol(); Store.paint();
+    const n0 = Deck.count('war_band');
+    Store.look('war_band');
+    await Store._tapBuy();
+    await new Promise(res => setTimeout(res, 1600));
+    out.bought = Deck.count('war_band') - n0;
+    out.marks2 = marks();
+    out.title = document.querySelector('#scrTitle .trow3 #btnTitleStore') ? 'row' : document.getElementById('btnTitleStore') ? 'elsewhere' : 'none';
     Store.back();
     out.backHome = Screens.current === 'title';
     // a game
@@ -418,7 +432,8 @@ const MOCK = `
     out.pausePurse = !!document.querySelector('#scrSetx .sxGold');
     return out;
   });
-  ck('theStoreOpensFromTheTitle', r.plate && r.fromTitle && r.items === 36 && r.backHome, `plate ${r.plate}, opened ${r.fromTitle} with ${r.items} cards, back to the title ${r.backHome}`);
+  ck('theStoreOpensFromTheTitle', r.plate && r.title === 'row' && r.fromTitle && r.items === 36 && r.backHome, `plate ${r.plate} (${r.title}), opened ${r.fromTitle} with ${r.items} cards, back to the title ${r.backHome}`);
+  ck('andNoWareWearsACount', r.marks === 0 && r.bought === 1 && r.marks2 === 0, `${r.marks} of ${r.items} wares wear a count, every card held once; one bought through the stall, then ${r.marks2}`);
   ck('butNeverOverAGame', r.inGameOpen === false && r.inGameShow !== 'store' && !r.pauseDoor && !r.pauseDoorGeneral && r.pausePurse,
     `Store.open ${r.inGameOpen}, Screens.show('store') → ${r.inGameShow}, the pause's store door ${r.pauseDoor || r.pauseDoorGeneral}, its purse shown ${r.pausePurse}`);
   await ctx.close();

@@ -52,7 +52,7 @@ const SettingsPage = {
   TABS: [
     { k: 'game', name: 'Game', inGame: true },
     { k: 'general', name: 'General' },
-    { k: 'saves', name: 'Saves' },
+    { k: 'saves', name: 'Load & Save', short: 'Saves' },
     { k: 'feedback', name: 'Feedback' },
     { k: 'notes', name: 'Patch Notes', short: 'Notes' },
   ],
@@ -447,15 +447,35 @@ const SettingsPage = {
     }
   },
 
-  /* ---------------- SAVES ---------------- */
+  /* ---------------- LOAD & SAVE ---------------- */
+  /* LOAD LIVES HERE (build 224 — the operator: "Move load from main menu to
+     settings; make it clear where load is it inside settings"): the tab says
+     Load in its own name, and its FIRST card is the way in — one lit plate,
+     the Resume's, opening the Load page (js/pages.js), whose back arrow
+     comes home to this tab (Screens.backTo 'settings'). Over a game it opens
+     the pause's own Load (backTo 'paused'), as the Game tab's button does;
+     never on the journey's title, which puts Load away (js/prologue.js). */
+  loadOffered() {
+    if (this.inGame) return true;
+    try { return !(window.Prologue && Prologue.active && Prologue.active()); } catch (e) { return true; }
+  },
+  openLoad() {
+    if (typeof Screens === 'undefined') return;
+    Screens.backTo = this.inGame ? 'paused' : 'settings';
+    Screens.show('load');
+  },
   CADENCE: [['0', 'Off'], ['1', 'Daily'], ['2', '2 days'], ['5', '5 days']],
   tab_saves() {
+    let top = '';
+    if (this.loadOffered()) top = this.card('Saved Games',
+      '<p class="sxLead">Pick up a game where you left it: from your cloud slots, this device, or a save file.</p>' +
+      `<button class="sxBtn sxLoad" type="button" data-act="load"><img alt="" src="${this.art('tab-saves')}" onerror="this.remove()">Load a game</button>`, 'sxLoadCard');
     const days = String(window.Backend ? Backend.autosaveDays : 2);
     const seg = '<div class="sxSeg" role="radiogroup" aria-label="Autosave">' +
       this.CADENCE.map(([v, n]) => `<button type="button" role="radio" data-cad="${v}" aria-checked="${v === days ? 'true' : 'false'}" class="${v === days ? 'on' : ''}">${n}</button>`).join('') +
       '</div>';
     const cloud = window.Backend && Backend.isReady();
-    let h = this.card('Autosave',
+    let h = top + this.card('Autosave',
       '<p class="sxLead">How often your game saves itself, counted in game days.</p>' + seg +
       `<p class="sxNote">${cloud ? 'Saves go to your cloud slot and to this device.' : 'Cloud saves aren’t connected on this device — the game keeps a copy here.'}</p>`);
     let b = '';
@@ -602,6 +622,7 @@ const SettingsPage = {
     else if (a === 'export-id') { const b = document.getElementById('btnExportId'); if (b) b.click(); }
     else if (a === 'import-id') { const b = document.getElementById('btnImportId'); if (b) b.click(); }
     else if (a === 'store' && window.Store) Store.open('settings');
+    else if (a === 'load') this.openLoad();
     else if (a === 'flush' && window.Feedback) {
       this.status('Sending…');
       Feedback.flush().then(() => {
@@ -758,6 +779,11 @@ SettingsPage.CSS = `
   #scrSetx .sxGame .sxQuiet { font-size: 12px; }
 }
 #scrSetx .sxGame .sxGLeave .sxNote { margin-top: 10px; }
+/* the Load & Save tab's way in: the lit plate, the full width of its card */
+#scrSetx .sxBtn.sxLoad { display: flex; align-items: center; justify-content: center; gap: 10px; width: 100%; height: 56px; font-size: 16px; letter-spacing: 3.2px; color: #fff3c8; }
+#scrSetx .sxBtn.sxLoad img { width: 30px; height: 30px; filter: drop-shadow(0 1px 1px rgba(0,0,0,0.7)) drop-shadow(0 0 6px rgba(255,210,110,0.4)); }
+#scrSetx .sxBtn.sxLoad::before { background: radial-gradient(ellipse 70% 80% at 50% 30%, rgba(255,214,120,.22), rgba(0,0,0,0) 70%) border-box, var(--plate-face-lit);
+  border-image-source: var(--plate-rim-lit); }
 #scrSetx .sxChev { display: none; }
 #scrSetx .sxRailFoot { display: none; }
 
@@ -986,6 +1012,12 @@ SettingsPage.CSS = `
   #scrSetx .sxTab .sxTs { display: inline; }
   #scrSetx .sxTab .sxTs ~ .sxDot { }
   #scrSetx .sxTab[data-tab="notes"] .sxTn { display: none; }
+  /* "Load & Save" keeps its whole name on a phone's four tabs; over a game
+     the strip holds five and the Game tab beside it carries Load, so it
+     reads "Saves" there */
+  #scrSetx .sxTab[data-tab="saves"] .sxTs { display: none; }
+  #scrSetx.sxInGame .sxTab[data-tab="saves"] .sxTs { display: inline; }
+  #scrSetx.sxInGame .sxTab[data-tab="saves"] .sxTn { display: none; }
   #scrSetx .sxKind span { font-size: 9.5px; }
 }
 @media (prefers-reduced-motion: reduce) { #scrSetx .sxTog, #scrSetx .sxTog i { transition: none; } }

@@ -177,7 +177,6 @@ const Store = {
         b.dataset.act = 'look';
         b.appendChild(Deck.face(c.id, { w: g.w }));
         b.insertAdjacentHTML('beforeend',
-          '<b class="stHave" hidden></b>' +
           `<span class="stTag">${Gold.mark(15)}<b class="stP">${Gold.fmt(Deck.price(c.id))}</b><small class="stMore"></small></span>`);
         wares.appendChild(b);
       }
@@ -197,9 +196,6 @@ const Store = {
       b.classList.toggle('short', short);
       b.querySelector('.stP').textContent = Gold.fmt(p);
       b.querySelector('.stMore').textContent = short ? Gold.fmt(p - gold) + ' more' : '';
-      const have = b.querySelector('.stHave');
-      have.hidden = !n;
-      have.textContent = '×' + n;
       b.setAttribute('aria-label', `${c.name}, ${Gold.fmt(p)} gold` + (short ? `, ${Gold.fmt(p - gold)} more gold needed` : '') + (n ? `, ${n} in your deck` : ''));
     }
     if (this._id) this._paintDeal();
@@ -360,9 +356,7 @@ const Store = {
             deckN.textContent = String(Deck.total());
             Gold.settle(this.el.querySelector('.stDeck'));
             this._cue('buy');
-            const it = this.el.querySelector(`.stItem[data-card="${id}"] .stHave`);
             finish();
-            if (it) Gold.pop(it);
           };
           try {
             const an = fly.animate([
@@ -482,10 +476,6 @@ Store.CSS = `
 #scrStore .stItem:active .ccard { translate: 0 2px; }
 @media (hover: hover) { #scrStore .stItem:hover .ccard { translate: 0 -3px; filter: drop-shadow(0 7px 9px rgba(0,0,0,0.6)) drop-shadow(0 0 8px rgba(255,210,110,0.25)); } }
 #scrStore .stItem:focus-visible { outline: 2px solid #f2cf73; outline-offset: 3px; }
-#scrStore .stHave { position: absolute; top: 3px; right: 3px; z-index: 2; min-width: 22px; height: 22px; padding: 0 5px; box-sizing: border-box; border-radius: 11px;
-  display: flex; align-items: center; justify-content: center; font: 700 13px/1 var(--numfont); color: #ffe7a8;
-  background: radial-gradient(circle at 50% 35%, #3a2410, #170c03); border: 1px solid #e0b252; box-shadow: 0 0 0 1px rgba(0,0,0,0.7), 0 2px 3px rgba(0,0,0,0.6); }
-#scrStore .stHave[hidden] { display: none; }
 /* the price tag: a coin and its number; a card short of the purse wears it red */
 #scrStore .stTag { position: relative; isolation: isolate; display: flex; align-items: center; justify-content: center; flex-wrap: wrap; column-gap: 5px; row-gap: 0;
   min-width: 74px; padding: 5px 10px 6px; }

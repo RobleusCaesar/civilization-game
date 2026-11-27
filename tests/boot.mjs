@@ -221,8 +221,11 @@ const ck = (n, ok, i) => { res[n] = (ok ? 'PASS' : 'FAIL') + (i ? ' — ' + i : 
        narrow secondary row is deliberately TEXT ONLY, because an icon in a
        plaque that size costs more label room than it earns. */
     const big = btns.filter(t => /class="abtn big/.test(t));
+    // five in the markup — Continue, New game, the Leaderboard, Settings, the
+    // Guide (Load moved into the Settings in build 224; the Store and the
+    // Cards are written by js/gold.js and js/deckscreens.js)
     ck('theMenuIsDrawnNotTyped',
-      btns.length >= 6 && !btns.some(t => emoji.test(t)),
+      btns.length >= 5 && !btns.some(t => emoji.test(t)),
       btns.length + ' buttons, no emoji');
     ck('andTheHeroPlaquesAreIconed',
       big.length === 3 && big.every(t => t.includes('class="pxi"')),
