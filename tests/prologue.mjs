@@ -1456,13 +1456,15 @@ const endScreen = async (p) => {
   const t = await p.evaluate(() => {
     const vis = id => { const e = document.getElementById(id); return !!(e && e.offsetParent !== null && getComputedStyle(e).display !== 'none'); };
     return { active: Prologue.active(), begin: vis('btnBegin'), label: (document.querySelector('#btnBegin small') || {}).textContent || '', skip: vis('btnSkipJourney'),
-      hidden: ['btnTitleNew', 'btnTitleBoard', 'btnTitleCards', 'btnTitleStore'].filter(id => document.getElementById(id) && !vis(id)).length,
+      hidden: ['btnTitleNew', 'btnTitleBoard', 'btnTitleStore'].filter(id => document.getElementById(id) && !vis(id)).length,
+      // the Cards plate went into the Marketplace at build 225: there is none to put away
+      cards: !!document.getElementById('btnTitleCards'),
       // Load lives in the Settings since build 224, and the journey's title keeps it put away there too
       load: !!document.getElementById('btnTitleLoad') || (() => { SettingsPage.onShow('saves'); const b = !!document.querySelector('#scrSetx [data-act="load"]'); SettingsPage.open('general'); return b; })(),
       held: Prologue.holding(), scen: window.S && S.scenario };
   });
   ck('aFreshDeviceIsOnTheJourney', t.active && t.begin && /The First Fire · 1 of 3/.test(t.label) && t.skip, JSON.stringify(t));
-  ck('andTheTitlePutsTheOtherDoorsAway', t.hidden === 4 && !t.load, t.hidden + ' of New Game, board, cards, the Store put away; Load offered ' + t.load);
+  ck('andTheTitlePutsTheOtherDoorsAway', t.hidden === 3 && !t.cards && !t.load, t.hidden + ' of New Game, the board, the Marketplace put away; a Cards plate ' + t.cards + '; Load offered ' + t.load);
   ck('theFirstWorldWaitsBehindTheTitle', t.held && t.scen === 'prologue_1', `holding ${t.held}, ${t.scen}`);
   await p.evaluate(() => { window.__held = S; });
   await p.click('#btnBegin');
