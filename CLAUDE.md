@@ -390,7 +390,7 @@ node tests/deck-army.mjs     # the army cards: one muster (open ground, one to a
 node tests/deck-growth.mjs   # richer = more in total (the seam gives 40% more, the ground stripped at its pace); the bounty's ring from the hall's middle, worn as the orbit with nothing grown; quicker hands raise sites, upgrades, the masons and a span, never repair, training, earthworks or the rival's; the blight is the rival's, fog-honest, leaves the truce; Enlightenment to the hall's level, works finished and paid back, nothing scored; YOUR Wonder a quarter cheaper and twice as fast, never finished by a card, the card landing on the works; the land's looks under the people and the fog; nothing drawn in the black; Enlightenment's town rises a beam at a time, the Foundation and Marble say what they gave
 node tests/deck-rival.mjs    # rival and sky: a card's map is never the tribe's eyes (score, foreignHome, aim, PLACEMENT and the grid, the live layers, rim, memory, relic; the world's reveal hands it back); the fire's watch (fed again: 3 more days), the map's mark, the spy's ghosts, silhouettes and their card in their voice; the pact waits for a spared rival but never long, never turns on you, and a no-road band spends its charge; the sun halves their sight, softens every blow, keeps every war band home; the kraken's four hulls, 600 to the shore, the 40% hall, asked of what you know at war and at peace, one beast to a cluster; the truce asked of what the player knows, asked twice, afresh after a put-back; off and idle change nothing; the fire seated off every roof and its find drawing no RNG, the pact's bands wearing a chip and mustering on the rival's side, every act lettered through one title
 node tests/deck-sync.mjs     # the deck's cloud: in order, a duplicate done, an unreached op (and slow_down) kept, a poisoned 4xx stepped past, no_run waits on its evidence (sent first, its owner's, aged out), the record replaces the mirror and a card it takes back is SAID, one mirror per player, two tabs never erase each other, one old save is one run; off (not even a listener) / disk / a test deck never sync; 0008 sealed, idempotent, its resend guard, evidence order, catalog, loss-deeds and pity the game's; the drop tiers read from every migration, 0011 one changed line of the door and its big-loss number the game's
-node tests/gold.mjs          # gold and the Marketplace: a run pays gold once (1 a 200 points, floor 10, cap 150; a defeat by the card rule), the journey its fixed purse once a player, never below nothing; the purchase is ONE door (buy_card) under the player's lock, its id kept for a lost answer, two tabs never spend one coin twice; the sale is ONE door too (sell_card, 0020): four fifths, never a card not held, never paid twice, two tabs never sell one card twice; a stopped card drain never spins; the Marketplace is the main menu's alone (never in a game, never in the journey), the one gold plate, no ware wearing a count; the hall at seven windows: the trader in view, his face clear, three offers whole and answering, a card held up face then back, Escape one step at a time; 0019 and 0020 sealed, idempotent, their numbers the game's; the end screen's coins; the test page's purse
+node tests/gold.mjs          # gold and the Marketplace: a run pays gold once (1 a 200 points, floor 10, cap 150; a defeat by the card rule), the journey its fixed purse once a player, never below nothing; the purchase is ONE door (buy_card) under the player's lock, its id kept for a lost answer, two tabs never spend one coin twice; the sale is ONE door too (sell_card, 0020): four fifths, never a card not held, never paid twice, two tabs never sell one card twice; a stopped card drain never spins; the Marketplace is the main menu's alone (never in a game, never in the journey), the one gold plate, no ware wearing a count; the hall at seven windows: the trader in view, his face clear, three offers whole and answering, the counter to the window's foot, a card held up face then back, Escape one step at a time; on a phone with a home bar the case ends above it with its ornaments whole, and a ware wears its price alone, red when short; 0019 and 0020 sealed, idempotent, their numbers the game's; the end screen's coins; the test page's purse
 node tests/settings.mjs      # the settings page, PUBLIC since build 106 (every device; the old screen stays in the markup as the stand-down and still paints itself switched off), and since build 214 the pause too (over a game its Game tab first: five tabs, four from the title), only real settings, a small cadence bar, the feedback form's email + Supabase copy + outbox, the error ring, the inbox never in the page source, no chrome past its own pixels at 3x, one frame height on every wide tab, the fit at every size
 node tests/prologue.mjs      # the journey: three authored worlds, every mark on its own ground; game 1 (a wooded glen) teaches food, wood and stone, the stations, the rally, a road dragged from the camp past the hall to the farm, the hunt and the lodge where the deer fell; game 2 is islands and lakes and teaches the map, the land as a defence, what a card is, a barracks, a range, a manned tower, the wall, its gate and the dock (a boat fishing, a transport sailing two hands to the far isle's seam and stone); game 3 is a pitched battle — a yard's storey and a soldier's rank, a workshop, the trading post, a stable, a sapper's bridge, a war camp, Group nearby, Army 1's banner, a march in three ranks, Chaos on the sally, a heal by the war camp, Siege on the wall, Strike on a tower, their barracks and their hall; each game's ring, look and hand wait their game's SPACE; one BEGIN and a two-tap skip, its name read in dark ink on the gold, centred under the word inside the groove at six sizes; each game won by following Mira's rings alone, every tap answered within a second, no ring drawn where a tap cannot land and every ring on the good its line names, no line past fifteen words; a held line names its own beat's price and keeps that good while it is short; the first berries, wood and stone flutter their chips gold, and the first house and newborn the people chip, once each a game (carried in the save); her nine faces on disk; her card stays at the top whatever its line points at (a covered target is brought out below it), carries the task where her name stood (her name a plate on her portrait) and is no taller for it, folds to a strip in its own corner that keeps the task, an opened map stands below it, no deed of the journey is cut short at 430px, and a NEW tag is whole in the menu; a lesson opens with the map folded and the unit tips put away; a ringed build card is brought into view until it is seen, even when its first scroll is undone, and then left to the player; a paused world (the Wonder's held frame) is not stepped; a journey world toasts only what the guide does not say (a refusal, a famine, an attack); the guide never rings under the minimap, a slipped ghost is pointed back, a toast lands below her line; the hall's last word, the chief's name, one card a game ever (Bronze, Iron, Imperial), the journey's doors, off the board; a lost third game tries again; a veteran never meets it
 node tests/patch-notes.mjs   # a release players would notice adds a player-facing note: the newest note never ahead of the code's ?v=, newest first, player words only, the unread dot
@@ -1616,23 +1616,41 @@ cut to the counter line (`GEO`: each painting's counter `top`, its front's
 foot `front`, his place `tx`; `TR`: his feet, crown, half-width and face, in
 master pixels). His words are a parchment bubble at his head (`_placeSay`:
 above it where there is room, else beside it, narrowing to 118px, never over
-the offers or the case, never under the header). **THE OFFERS**: Buy, Sell
-and Your Deck, signs on the counter's front (a column on a phone; a row on a
-wide window; beside him on a window too short for the row). **THE CASE**: the
-album's black panel in the settings page's carved gold rim — on the counter
-from about 37% of a phone's height, beside him on a wide window — the modes
-as tabs, the five tiers as tabs that jump the shelf and light the tier in
-view, then every card of the mode at whole device pixels (`_grid`: as many
-columns as fit at 108px or more): BUY the catalog with prices (short: red and
-how much more), SELL every card held with what he pays and how many, DECK all
-36 (the ones not found dark; a tap says so). **A CARD HELD UP** (operator:
+the offers or the case, never under the header). **THE COUNTER RUNS TO THE
+FOOT** (build 226 — the operator, on his iPhone at home-screen size: "Make sure
+the shop keepers table goes to the bottom of the screen"): where the painting
+stops short of the window's foot (a phone, where the hall is lifted to make
+room for the offers), its own counter front is carried on from row `cut`
+(`.mkExt`, `counter-{wide,tall}.png`: a band of those planks and its mirror,
+`tile` rows, so it repeats without a seam) — never a stand-in fill.
+**THE OFFERS**: Buy, Sell and Your Deck, WOODEN SIGNS on the counter's front
+(build 226, from the operator's mockup: `plank.png`, a PixelLab plank with
+iron corner brackets drawn as a nine-slice — its ends kept, its middle drawn
+out, `--plank` — the coin stack `coins.png`, the purse, the card deck
+`deck.png`, the word in Cinzel and a gold chevron; a column on a phone, a row
+on a wide window, beside him on a window too short for the row). **THE CASE**:
+the album's black panel in the settings page's carved gold rim — on the
+counter from about 37% of a phone's height, beside him on a wide window —
+**ENDING ABOVE THE HOME BAR** (`Store._foot`: the safe area and 8px, and a
+test page's TEST BUILD badge, so its trim and ornaments are whole and the
+counter shows beneath; the operator: "the gold trim at the bottom ... goes
+down too far, gets cut off, and there is some random extra blackness"), the
+modes as tabs (their pictures, a gold glow on the one chosen, "Your Deck"
+where the case has the room), the five tiers as tabs — a gem and a name, no
+price or count (operator: "too messy") — that jump the shelf and light the
+tier in view, then every card of the mode at whole device pixels (`_grid`: as
+many columns as fit at 108px or more): BUY the catalog, each ware wearing its
+price alone, the number red when the purse is short of it (never how much
+more — "Drop the amount of coins you're missing under a card"; the held card
+says only "Not enough gold yet"), SELL every card held with what he pays and
+how many, DECK all 36 (the ones not found dark; a tap says so). **A CARD HELD UP** (operator:
 "you see the front for half a second and then it flips… take up the space
 over the deck… have the shopkeeper comment on the card"): it lifts over the
 case, face up, and after `FLIP_MS` (500) turns to its back (reduced motion:
 its back at once); on a phone it may rise over the counter up to his chin,
 never over his face; a short case stands the deal beside it; it is as big as
 the room allows at whole device pixels (`Deck.fit`, 352px on a 390 phone and
-a desktop, 264 on a 375x667). Under it Buy (gold) or Sell (red) and Put back;
+a desktop, 264 on a 375x667). Under it Buy (gold, the coin stack) or Sell (red, the purse) and Put back;
 he says something about the card (`_line`, a line a tier). Over
 `CONFIRM_OVER` — and selling the last copy — the first tap arms it. Escape
 (and the back plate) step back one thing: the card, the mode, the hall

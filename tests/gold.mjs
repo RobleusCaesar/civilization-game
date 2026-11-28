@@ -706,7 +706,11 @@ const MOCK = `
       const say = box(document.querySelector('#scrStore .mkSay')), head = box(document.querySelector('#scrStore .stHead')).bottom;
       const over = (a, b) => Math.max(0, Math.min(a.right, b.right) - Math.max(a.left, b.left)) * Math.max(0, Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top));
       const offers = [...document.querySelectorAll('#scrStore .mkOffer')];
+      // the counter runs to the window's foot: the painting, or its planks carried on
+      const foot = () => { const sc = box(document.querySelector('#scrStore .mkScene')), ex = document.querySelector('#scrStore .mkExt');
+        return Math.max(sc.bottom, ex.hidden ? 0 : box(ex).bottom) >= H - 1; };
       const out = {
+        footLand: foot(),
         traderTall: tr.height / H, faceIn: face.top >= head - 2 && face.left >= 0 && face.right <= W,
         faceCovered: over(say, face) / ((face.right - face.left) * (face.bottom - face.top)),
         sayIn: inside(say) && say.top >= head - 1,
@@ -719,6 +723,7 @@ const MOCK = `
       const caseB = box(document.querySelector('#scrStore .stCase'));
       const ware = document.querySelector('#scrStore .stItem .ccard');
       out.caseIn = inside(caseB) && caseB.height > 200;
+      out.footBuy = foot();
       out.ware = ware ? box(ware).width : 0;
       out.sayClear = over(box(document.querySelector('#scrStore .mkSay')), caseB) === 0;
       Store.look('iron_legion');
@@ -747,6 +752,7 @@ const MOCK = `
     for (const o of r.offers) if (!o.in || !o.hit) bad.push(`${tag} ${o.m} ${!o.in ? 'outside the window' : 'covered'}`);
     if (r.offers.length !== 3) bad.push(`${tag} ${r.offers.length} offers`);
     if (!r.caseIn) bad.push(`${tag} the case`);
+    if (!r.footLand || !r.footBuy) bad.push(`${tag} the counter stops short of the window's foot (hall ${r.footLand}, case ${r.footBuy})`);
     if (!r.sayClear) bad.push(`${tag} his words over the case`);
     if (!(r.ware >= 100)) bad.push(`${tag} a ware ${r.ware}px wide`);
     held.push(`${tag} ${Math.round(r.ware)}→${Math.round(r.big)}px`);
@@ -780,6 +786,56 @@ const MOCK = `
   });
   ck('sellingThroughTheScreenTakesTheCardAndPays', r.listed === r.held && r.armed && r.n1 === r.n0 - 1 && r.g1 === r.price && r.gone && r.closed,
     `${r.listed} of ${r.held} held cards listed; the only war band asked twice ${r.armed}; ×${r.n0} → ×${r.n1}, purse ${r.g1} (${r.price}); off the shelf ${r.gone}`);
+  await ctx.close();
+}
+
+/* ================= 18b. THE COUNTER, THE CASE'S FOOT, THE TAGS ================= */
+{
+  /* build 226 — the operator, on an iPhone at home-screen size: "Make sure the
+     shop keepers table goes to the bottom of the screen ... the gold trim at the
+     bottom of the screen ... goes down too far, gets cut off, and there is some
+     random extra blackness down there"; "Drop the amount of coins you're missing
+     under a card, and drop the average cost of a card type ... Coins are red if
+     you can't afford a card". 390x785 at 3x with a 34px home bar, as his phone. */
+  const ctx = await browser.newContext({ viewport: { width: 390, height: 785 }, deviceScaleFactor: 3, isMobile: true, hasTouch: true });
+  await ctx.addInitScript(VETERAN);
+  const { p } = await page({ ctx, q: '?prologue=0&cards=all' });
+  let inset = true;
+  try { const cdp = await ctx.newCDPSession(p); await cdp.send('Emulation.setSafeAreaInsetsOverride', { insets: { top: 0, bottom: 34, left: 0, right: 0 } }); } catch (e) { inset = false; }
+  const r = await p.evaluate(async () => {
+    const c = Deck.col(); c.gold = 50; Deck.saveCol();
+    Store.open('title');
+    await new Promise(res => setTimeout(res, 300));
+    const W = innerWidth, H = innerHeight, box = e => e.getBoundingClientRect();
+    const sb = document.querySelector('#scrStore .mkSb').offsetHeight;
+    const ex = document.querySelector('#scrStore .mkExt'), G = Store._geo;
+    const foot = () => { const sc = box(document.querySelector('#scrStore .mkScene')); return Math.max(sc.bottom, ex.hidden ? 0 : box(ex).bottom); };
+    // the planks carried on start on the painting's own row: no seam, no gap
+    const seam = ex.hidden ? 0 : Math.abs(box(ex).top - (G.y0 + G.g.cut * G.s));
+    const offersB = box(document.querySelector('#scrStore .mkOffers')).bottom;
+    const out = { sb, H, footLand: foot(), seam, offersB };
+    Store.setMode('buy');
+    await new Promise(res => setTimeout(res, 120));
+    await Promise.race([Promise.all(document.getAnimations().map(a => a.finished.catch(() => {}))), new Promise(res => setTimeout(res, 1500))]);
+    const cb = box(document.querySelector('#scrStore .stCase'));
+    out.caseB = cb.bottom; out.footBuy = foot();
+    out.corners = [...document.querySelectorAll('#scrStore .stC')].map(e => box(e)).every(b => b.left >= -0.5 && b.right <= W + 0.5 && b.top >= 0 && b.bottom <= H - sb + 0.5);
+    out.more = document.querySelectorAll('#scrStore .stMore').length;
+    out.tiers = [...document.querySelectorAll('#scrStore .stTier')].map(t => t.textContent.trim());
+    out.names = Deck.TIERS.map(t => t.name);
+    const col = id => { const e = document.querySelector(`#scrStore .stItem[data-card="${id}"] .stP`); return e ? getComputedStyle(e).color.match(/\d+/g).map(Number) : null; };
+    const cheap = Deck.CATALOG.find(x => Deck.price(x.id) <= 50), dear = Deck.CATALOG.find(x => Deck.price(x.id) > 50);
+    out.cheap = col(cheap.id); out.dear = col(dear.id);
+    out.tagWords = [...document.querySelectorAll('#scrStore .stItem .stTag')].every(t => /^[\d,]+$/.test(t.textContent.trim()));
+    return out;
+  });
+  const red = c => !!c && c[0] > 200 && c[0] - c[1] > 70, plain = c => !!c && !red(c);
+  ck('theCounterRunsToTheFootAndTheCaseEndsAboveTheHomeBar',
+    inset && r.sb === 34 && r.footLand >= r.H - 1 && r.footBuy >= r.H - 1 && r.seam < 1.5 && r.offersB <= r.H - r.sb && r.caseB <= r.H - r.sb - 6 && r.caseB >= r.H - r.sb - 20 && r.corners,
+    `home bar ${inset ? r.sb : 'not emulated'}px; the counter to ${Math.round(r.footLand)} / ${Math.round(r.footBuy)} of ${r.H} (seam ${r.seam.toFixed(2)}px); the offers end ${Math.round(r.offersB)}; the case ends ${Math.round(r.caseB)}, its ornaments whole ${r.corners}`);
+  ck('aWareWearsItsPriceAloneRedWhenShort',
+    r.more === 0 && r.tagWords && JSON.stringify(r.tiers) === JSON.stringify(r.names) && plain(r.cheap) && red(r.dear),
+    `${r.more} "more" lines, tags only a price ${r.tagWords}; tier tabs ${r.tiers.join('/')}; an affordable price rgb(${r.cheap}), a dear one rgb(${r.dear})`);
   await ctx.close();
 }
 
