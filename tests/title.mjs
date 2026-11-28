@@ -225,7 +225,7 @@ const nightReqs = reqs => reqs.filter(u => /assets\/ui\/title\//.test(u)).map(u 
   const u = await open({ tag: 'plain' });
   const s = await state(u.p);
   ck('everyDeviceWearsTheNight',
-    s.title2 && s.live && !s.dev && s.t2 && s.css && s.night && s.frames >= 7 && s.icons >= 7 && s.oldVis === 'hidden',
+    s.title2 && s.live && !s.dev && s.t2 && s.css && s.night && s.frames >= 6 && s.icons >= 6 && s.oldVis === 'hidden',
     JSON.stringify(s));
   /* the markup's picture and Boot.t2wear's copy (on the splash and on the
      title alike) are the same sources, so ONE request carries all four —
@@ -277,7 +277,7 @@ const nightReqs = reqs => reqs.filter(u => /assets\/ui\/title\//.test(u)).map(u 
     frames: document.querySelectorAll('#scrTitle .t2f').length,
     amb: [...document.querySelectorAll('#scrTitle .t2amb')].filter(a => a.style.display !== 'none').length,
   }));
-  ck('aMissingNightStandsDownQuietly', r.lifted && !r.night && r.lost && r.ground === 'rgb(10, 13, 24)' && !r.shade && r.frames >= 7 && r.amb === 0,
+  ck('aMissingNightStandsDownQuietly', r.lifted && !r.night && r.lost && r.ground === 'rgb(10, 13, 24)' && !r.shade && r.frames >= 6 && r.amb === 0,
     JSON.stringify(r));
   await o.ctx.close();
 }
@@ -380,7 +380,7 @@ const nightReqs = reqs => reqs.filter(u => /assets\/ui\/title\//.test(u)).map(u 
       const k = Math.max(x.w * 3 / x.nw, x.h * 3 / x.nh);
       if (k > 1.001) over.push(`${x.name} ${x.w.toFixed(0)}px at ${w}x${h} (${k.toFixed(2)}x its ${x.nw}px at 3x)`);
     }
-    if (r.framed !== r.plaques || r.plaques < 7 || r.stepped || r.pxi) frames.push(`${w}x${h}: ${r.framed}/${r.plaques} framed, ${r.stepped} stepped icons, ${r.pxi} pixel icons`);
+    if (r.framed !== r.plaques || r.plaques < 6 || r.stepped || r.pxi) frames.push(`${w}x${h}: ${r.framed}/${r.plaques} framed, ${r.stepped} stepped icons, ${r.pxi} pixel icons`);
     // never nearest-neighbour on a 1x screen; at 2x/3x only where the picture is shown at or above its pixels
     if ((dpr < 2 && r.ir !== 'auto') || !r.ir) blocky.push(`${w}x${h}@${dpr}: ${r.ir}`);
     const wantWide = w / h >= 4 / 3;
@@ -425,7 +425,7 @@ const nightReqs = reqs => reqs.filter(u => /assets\/ui\/title\//.test(u)).map(u 
   ck('itFitsAtEverySize', fit.length === 0, fit.join(' | ') || SIZES.map(s => s[0] + 'x' + s[1]).join(' ') + ': no scroll, all inside, logo clear, 44px targets, the fire in the open');
 }
 
-/* ---- 5. NO LABEL RUNS OFF ITS PLAQUE (all seven, at the widths the boot contract measures) ---- */
+/* ---- 5. NO LABEL RUNS OFF ITS PLAQUE (all six since build 225's Marketplace, at the widths the boot contract measures) ---- */
 {
   const tight = [];
   for (const w of [320, 359, 360, 375, 390, 430]) {
@@ -437,10 +437,10 @@ const nightReqs = reqs => reqs.filter(u => /assets\/ui\/title\//.test(u)).map(u 
       return { t: lab.textContent.trim(), slack: +(inner - r.width).toFixed(1), h: r.height, sm: sm ? sm.getBoundingClientRect().width <= inner : true, H: el.offsetHeight };
     }));
     for (const r of rows) if (r.slack < 2 || r.h > 30 || !r.sm || r.H < 44) tight.push(`${w}px ${r.t} slack=${r.slack} h=${r.h.toFixed(0)} H=${r.H}`);
-    if (rows.length < 7) tight.push(`${w}px: ${rows.length} plaques`);
+    if (rows.length < 6) tight.push(`${w}px: ${rows.length} plaques`);
     await o.ctx.close();
   }
-  ck('noTitleLabelRunsOffItsPlaque', tight.length === 0, tight.join(' | ') || 'all seven labels fit, one line, 44px plaques, at 320/359/360/375/390/430');
+  ck('noTitleLabelRunsOffItsPlaque', tight.length === 0, tight.join(' | ') || 'all six labels fit, one line, 44px plaques, at 320/359/360/375/390/430');
 }
 
 /* ---- 7. THE PLAQUES BEHAVE ---- */
@@ -468,7 +468,10 @@ const nightReqs = reqs => reqs.filter(u => /assets\/ui\/title\//.test(u)).map(u 
   /* build 224 — the operator: "Give leaderboard back its blue color, and make
      store and cards buttons golden. Keeps the menu from being too
      monotonous": the kinds, and the faces they really paint (read off the
-     drawn frame's own gradient, so a kind with no face of its own fails) */
+     drawn frame's own gradient, so a kind with no face of its own fails).
+     Build 225 made the Store and the Cards ONE Marketplace plate ("now
+     there's only one button for the shopkeeper, not 2"): it is gold, and no
+     Cards plate is drawn */
   const hue = await p.evaluate(() => {
     const face = id => { const e = document.getElementById(id), st = e && e.querySelector(':scope > .t2f linearGradient stop');
       return { kind: e ? e.dataset.t2 : 'absent', c: st ? st.getAttribute('stop-color') : '' }; };
@@ -479,9 +482,9 @@ const nightReqs = reqs => reqs.filter(u => /assets\/ui\/title\//.test(u)).map(u 
   });
   const blue = c => c.length === 3 && c[2] > c[0] + 30 && c[2] > c[1];
   const gold = c => c.length === 3 && c[0] > 200 && c[1] > 160 && c[2] < c[1] - 40;
-  ck('theLeaderboardIsBlueAndTheStoreAndCardsAreGold', hue.board.kind === 'navy' && blue(hue.board.rgb) && hue.store.kind === 'gold' && gold(hue.store.rgb)
-    && hue.cards.kind === 'gold' && gold(hue.cards.rgb) && !blue(hue.quiet.rgb) && !gold(hue.quiet.rgb),
-    `Leaderboard ${hue.board.kind} ${hue.board.c}, Store ${hue.store.kind} ${hue.store.c}, Cards ${hue.cards.kind} ${hue.cards.c}, Settings ${hue.quiet.kind} ${hue.quiet.c}`);
+  ck('theLeaderboardIsBlueAndTheMarketplaceIsGold', hue.board.kind === 'navy' && blue(hue.board.rgb) && hue.store.kind === 'gold' && gold(hue.store.rgb)
+    && hue.cards.kind === 'absent' && !blue(hue.quiet.rgb) && !gold(hue.quiet.rgb),
+    `Leaderboard ${hue.board.kind} ${hue.board.c}, Marketplace ${hue.store.kind} ${hue.store.c}, a Cards plate ${hue.cards.kind}, Settings ${hue.quiet.kind} ${hue.quiet.c}`);
   const odd = r.plates.filter(q => !q.notch || q.caps || q.grain || (q.kind === 'lit') !== q.gold);
   /* LOAD LEFT THE TITLE FOR THE SETTINGS (build 224 — "Move load from main
      menu to settings; make it clear where load is it inside settings. Move
@@ -498,15 +501,18 @@ const nightReqs = reqs => reqs.filter(u => /assets\/ui\/title\//.test(u)).map(u 
     const top = document.querySelector('#scrTitle .thead').getBoundingClientRect().top;
     const last = [...document.querySelectorAll('#scrTitle .tmenu .abtn')].reduce((m, e) => Math.max(m, e.getBoundingClientRect().bottom), 0);
     const inTop = cr.top + parseFloat(cs.paddingTop), inBot = cr.bottom - parseFloat(cs.paddingBottom);
-    const st = document.getElementById('btnTitleStore');
+    const st = document.getElementById('btnTitleStore'), rw = document.querySelector('#scrTitle .trow3').getBoundingClientRect();
     return { load: !!document.getElementById('btnTitleLoad'), row, heroes, off: +(((top + last) / 2) - ((inTop + inBot) / 2)).toFixed(1),
-      purse: st ? (st.querySelector('.tGoldN') || {}).textContent : null, gold: Gold.short(Gold.balance()), big: st ? st.classList.contains('big') : null };
+      purse: st ? (st.querySelector('.tGoldN') || {}).textContent : null, gold: Gold.short(Gold.balance()), big: st ? st.classList.contains('big') : null,
+      word: st ? [...st.querySelector('.blab').childNodes].filter(n => n.nodeType === 3).map(n => n.textContent).join('').trim() : '', full: st ? Math.abs(st.getBoundingClientRect().width - rw.width) <= 2 : false };
   });
-  ck('loadLeftTheTitleAndTheStoreTookItsPlace', !lay.load && lay.row.join() === 'btnTitleSettings,btnTitleHow,btnTitleStore,btnTitleCards' && lay.big === false
-    && lay.heroes.join() === 'btnContinue,btnTitleNew,btnTitleBoard' && lay.purse === lay.gold,
-    `Load ${lay.load}; the row ${lay.row.join(' ')}; heroes ${lay.heroes.join(' ')}; the Store's purse "${lay.purse}" (${lay.gold})`);
+  /* …and since build 225 the Marketplace is the row's third plate, the
+     whole width of the row under Settings and the Guide */
+  ck('loadLeftTheTitleAndTheMarketplaceIsTheOneCardDoor', !lay.load && lay.row.join() === 'btnTitleSettings,btnTitleHow,btnTitleStore' && lay.big === false
+    && lay.heroes.join() === 'btnContinue,btnTitleNew,btnTitleBoard' && lay.purse === lay.gold && lay.word === 'Marketplace' && lay.full,
+    `Load ${lay.load}; the row ${lay.row.join(' ')}; heroes ${lay.heroes.join(' ')}; "${lay.word}" the row's width ${lay.full}, its purse "${lay.purse}" (${lay.gold})`);
   ck('andTheMenuStandsInTheMiddle', Math.abs(lay.off) <= 2, `the logo and menu block ${lay.off}px off the column's middle`);
-  ck('andEveryPlateIsTheSettingsPagesPlate', r.plates.length >= 7 && odd.length === 0,
+  ck('andEveryPlateIsTheSettingsPagesPlate', r.plates.length >= 6 && odd.length === 0,
     odd.length ? JSON.stringify(odd) : `${r.plates.length} plates: the cut corner, the line(s), no caps or grain; the gold line only on the lit one`);
   ck('andANoSavesContinueSitsFlat', r.cant && r.contF === 'none' && r.contOp === '1' && r.small.length > 0, `cant=${r.cant}, its frame's drop: ${r.contF}, "${r.small}"`);
   const top0 = await p.evaluate(() => document.getElementById('btnTitleBoard').getBoundingClientRect().top);
@@ -700,10 +706,10 @@ const nightReqs = reqs => reqs.filter(u => /assets\/ui\/title\//.test(u)).map(u 
     said.push(`${w}x${h}: ${why.length ? why.join(', ') : 'seen — "' + r.text + '"'}`);
     if (why.length) said.fail = true;
     // every plaque the title shows (Continue, New game, Leaderboard, Settings,
-    // Guide, the Store and the deck's Cards) is measured, so the probe is never vacuous
+    // Guide and the Marketplace) is measured, so the probe is never vacuous
     const nPlaques = r.none ? 0 : r.plaques.split(' ').filter(Boolean).length;
-    covered.push(`${w}x${h}: ${r.none ? 'no line to measure' : nPlaques < 7 ? 'only ' + nPlaques + ' plaques (' + r.plaques + ')' : r.under.length ? 'over ' + r.under.join(', ') : nPlaques + ' plaques clear'}`);
-    if (r.none || nPlaques < 7 || r.under.length) covered.fail = true;
+    covered.push(`${w}x${h}: ${r.none ? 'no line to measure' : nPlaques < 6 ? 'only ' + nPlaques + ' plaques (' + r.plaques + ')' : r.under.length ? 'over ' + r.under.join(', ') : nPlaques + ' plaques clear'}`);
+    if (r.none || nPlaques < 6 || r.under.length) covered.fail = true;
     const cloudReqs = o.reqs.filter(u => { try { return new URL(u).host === cloud; } catch (e) { return false; } });
     if (cloudReqs.length) asked.push(`${w}x${h}: ${cloudReqs.length} (${cloudReqs[0].replace(/\?.*$/, '')})`);
     await o.ctx.close();

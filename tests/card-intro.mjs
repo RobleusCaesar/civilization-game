@@ -296,13 +296,13 @@ const openNow = p => p.evaluate(() => { if (!CardIntro.open) CardIntro.show('tit
   ck('aTapInsideThePanelIsNotAClose', inside);
   ck('theBackdropClosesIt', veil);
   // Escape
-  await p.evaluate(() => { document.getElementById('btnTitleCards') && document.getElementById('btnTitleCards').focus(); CardIntro.show('title'); });
+  await p.evaluate(() => { document.getElementById('btnTitleStore') && document.getElementById('btnTitleStore').focus(); CardIntro.show('title'); });
   await sleep(300);
   await p.keyboard.press('Escape');
   await closed(p);
   const esc = await p.evaluate(() => ({ closed: !CardIntro.open, focus: document.activeElement && document.activeElement.id, title: Screens.current }));
   ck('escapeClosesIt', esc.closed && esc.title === 'title', JSON.stringify(esc));
-  ck('andTheFocusComesHome', esc.focus === 'btnTitleCards', String(esc.focus));
+  ck('andTheFocusComesHome', esc.focus === 'btnTitleStore', String(esc.focus));
   // the X is 44px to touch
   await openNow(p);
   await sleep(700);   // past the panel's own entrance (it grows in from 96%)

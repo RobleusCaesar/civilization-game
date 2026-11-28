@@ -41,7 +41,21 @@
    14. A CLOUD PURCHASE WHOSE ANSWER WAS LOST is asked again under the same
       id: one card, one charge.
    15. THE TEST LINK mints nothing on a real purse.
-   16. THE END SCREEN'S GOLD: the headline row, its sum and purse. */
+   16. THE END SCREEN'S GOLD: the headline row, its sum and purse.
+   THE MARKETPLACE BUYS BACK (build 225, migration 0020_sell_card.sql):
+   8b. A SALE IS ATOMIC: the card leaves, four fifths of its price lands,
+      the sale is written; the same sale id again pays nothing twice; a price
+      the screen did not show is refused with the real one; a card not held
+      is 'none_left'; two sessions selling the last copy at once — one sale;
+      the doors and the ledger are sealed; 0020 twice changes nothing and
+      refuses without 0019 by name.
+   17. A LOCAL SALE pays Gold.sellPrice (the record's own number) and takes
+      the card; a cloud sale whose answer was lost is asked again under the
+      same id: one card gone, one payment.
+   18. THE MARKETPLACE: one gold plate on the title is the cards' only door;
+      the hall opens on the trader and his three offers, every one in view
+      and his face clear of his words, at seven sizes; a card held up shows
+      its face, then its back, over the case; Sell through the screen. */
 import { join, dirname } from 'node:path';
 import { readdirSync, readFileSync, existsSync, mkdtempSync, rmSync } from 'node:fs';
 import { execFileSync, spawnSync, spawn } from 'node:child_process';
@@ -122,7 +136,7 @@ const SCAFFOLD = `
   alter default privileges in schema public grant all on sequences to anon, authenticated, service_role;`;
 const MIG = join(root, 'supabase/migrations');
 const files = readdirSync(MIG).filter(f => /^\d{4}_.*\.sql$/.test(f)).sort();
-const F19 = '0019_gold_store.sql';
+const F19 = '0019_gold_store.sql', F20 = '0020_sell_card.sql';
 const make = (db) => { sql('create database ' + db + ';', { db: 'postgres' }); return sql(SCAFFOLD, { db }); };
 const P = n => '00000000-0000-0000-0000-0000000009' + String(n).padStart(2, '0');
 const as = (n, q) => `set role authenticated; set request.jwt.claim.sub = '${P(n)}'; ${q}`;
@@ -136,10 +150,15 @@ const say = o => o && (o.ok ? 'ok' + (o.already ? ' (already)' : '') : (o.reason
   ck('everyMigrationAppliesInOrderWithTheGold', !s0.error && broke.length === 0 && files.includes(F19), broke.join(' | ') || files.length + ' files');
   const again = sql(readFileSync(join(MIG, F19), 'utf8'));
   ck('andTheGoldTwiceChangesNothing', !again.error, again.error ? again.error.split('\n')[0] : 'applied a second time cleanly');
+  // 0020 is pasted after any re-paste of 0019 (it re-creates my_gold), and twice changes nothing
+  const sale1 = sql(readFileSync(join(MIG, F20), 'utf8')), sale2 = sql(readFileSync(join(MIG, F20), 'utf8'));
+  ck('andTheSaleAppliesAfterItAndTwiceChangesNothing', files.includes(F20) && !sale1.error && !sale2.error, (sale1.error || sale2.error || 'applied twice cleanly').split('\n')[0]);
   make('cf_bare');
   for (const f of files.filter(f => f < '0008')) sql(readFileSync(join(MIG, f), 'utf8'), { db: 'cf_bare' });
   const bare = sql(readFileSync(join(MIG, F19), 'utf8'), { db: 'cf_bare' });
   ck('itRefusesWithoutTheCardsByName', !!bare.error && /0008/.test(bare.error), bare.error ? (bare.error.split('\n').find(l => /0008/.test(l)) || bare.error.split('\n')[0]) : 'it applied');
+  const bare20 = sql(readFileSync(join(MIG, F20), 'utf8'), { db: 'cf_bare' });
+  ck('andTheSaleRefusesWithoutTheGoldByName', !!bare20.error && /0019/.test(bare20.error), bare20.error ? (bare20.error.split('\n').find(l => /0019/.test(l)) || bare20.error.split('\n')[0]) : 'it applied');
 }
 
 /* the record's numbers, read for section 2 (checked against the page's) */
@@ -149,6 +168,8 @@ const SQLN = {
   prices: Object.fromEntries((sql("select card_key || '=' || price from public.card_prices order by card_key;").out || '').split('\n').filter(Boolean).map(l => l.split('=')).map(([k, v]) => [k, +v])),
   tierOf: Object.fromEntries((sql("select card_key || '=' || tier from public.card_catalog where active order by card_key;").out || '').split('\n').filter(Boolean).map(l => l.split('='))),
   drops: Object.fromEntries((sql("select tbl || ':' || string_agg(tier, ',' order by tier) from public.card_drop_tiers group by tbl;").out || '').split('\n').filter(Boolean).map(l => l.split(':'))),
+  sellPct: +sql('select public.card_sell_pct();').out,
+  sell: Object.fromEntries((sql("select card_key || '=' || public.card_sell_price(card_key) from public.card_prices order by card_key;").out || '').split('\n').filter(Boolean).map(l => l.split('=')).map(([k, v]) => [k, +v])),
 };
 
 /* ================= 3. ONE GRANT PER RUN ================= */
@@ -262,6 +283,51 @@ const SQLN = {
     dash.error ? dash.error.split('\n')[0] : `with it: ${dash.ok ? 'answered (' + (dash.spent && dash.spent.purchases) + ' purchases)' : say(dash)}; without: ${say(bad)}`);
 }
 
+/* ================= 8b. THE TRADER BUYS BACK (0020) ================= */
+{
+  sql(`insert into auth.users (id) values ('${P(6)}'), ('${P(7)}') on conflict do nothing;
+    insert into public.profiles (id) values ('${P(6)}'), ('${P(7)}') on conflict do nothing;
+    insert into public.card_collection (user_id, card_key, qty) values ('${P(6)}', 'war_band', 2), ('${P(6)}', 'veterans', 1), ('${P(7)}', 'war_band', 1);`);
+  const qty = (n, c) => +(sql(`select coalesce((select qty from public.card_collection where user_id = '${P(n)}' and card_key = ${lit(c)}), 0);`).out || -1);
+  const bal = n => +(sql(`select coalesce((select balance from public.gold_wallet where user_id = '${P(n)}'), 0);`).out || -1);
+  const sell = (n, c, id, pr) => json(as(n, `select public.sell_card(${lit(c)}, ${lit(id)}, ${pr == null ? 'null' : pr});`));
+  const wb = SQLN.sell.war_band, vt = SQLN.sell.veterans;
+  const r = { wrong: sell(6, 'war_band', 's0', wb + 1) };
+  const q0 = qty(6, 'war_band'), b0 = bal(6);
+  r.ok = sell(6, 'war_band', 's1', wb);
+  const q1 = qty(6, 'war_band'), b1 = bal(6);
+  r.retry = sell(6, 'war_band', 's1', wb);
+  const q2 = qty(6, 'war_band'), b2 = bal(6);
+  r.last = sell(6, 'veterans', 's2', vt);
+  r.none = sell(6, 'veterans', 's3', vt);
+  r.unknown = sell(6, 'no_such_card', 's4', 10);
+  const rows = +sql(`select count(*) from public.gold_sales where user_id = '${P(6)}';`).out;
+  const sold = +sql(`select sold from public.gold_wallet where user_id = '${P(6)}';`).out;
+  ck('aSaleTakesTheCardAndPaysFourFifths', SQLN.sellPct === 80 && wb === Math.floor(SQLN.prices.war_band * 0.8 + 0.5) && r.ok.ok === true && q1 === q0 - 1 && b1 === b0 + wb && r.ok.gold === b1 && r.ok.qty === q1,
+    `${SQLN.sellPct}% of ${SQLN.prices.war_band} = ${wb}: ${say(r.ok)}, war band ×${q0} → ×${q1}, purse ${b0} → ${b1}`);
+  ck('aRetryOfTheSameSalePaysNothingTwice', r.retry.ok === true && r.retry.already === true && q2 === q1 && b2 === b1, `the same id again: ${say(r.retry)}, ×${q2}, purse ${b2}`);
+  ck('theLastCopySellsAndThenThereIsNoneLeft', r.last.ok === true && r.last.qty === 0 && r.none.ok === false && r.none.reason === 'none_left' && qty(6, 'veterans') === 0 && bal(6) === b2 + vt && rows === 2 && sold === wb + vt,
+    `the last veterans: ${say(r.last)}, then ${say(r.none)}; ${rows} sales, sold ${sold}`);
+  ck('aSalePriceTheScreenDidNotShowIsRefused', r.wrong.ok === false && r.wrong.reason === 'price_changed' && r.wrong.price === wb && r.wrong.buy === SQLN.prices.war_band,
+    `sent ${wb + 1}: ${say(r.wrong)} (the real ${r.wrong.price}, the list ${r.wrong.buy})`);
+  ck('andAnUnknownCardIsNotBought', r.unknown.reason === 'not_for_sale', say(r.unknown));
+  // two sessions selling player 7's only war band at once: one sale
+  const one = as(7, `begin; select public.sell_card('war_band', 'tA', ${wb}); select pg_sleep(1.2); commit;`);
+  const two = as(7, `select pg_sleep(0.3); select public.sell_card('war_band', 'tB', ${wb});`);
+  const [a, b] = await Promise.all([sqlAsync(one, 'cf'), sqlAsync(two, 'cf')]);
+  const A = parse({ out: (a.out || '').split('\n').filter(l => l.startsWith('{')).pop() || '' }), B = parse({ out: (b.out || '').split('\n').filter(l => l.startsWith('{')).pop() || '' });
+  ck('twoTabsCannotSellOneCardTwice', A.ok === true && B.ok === false && B.reason === 'none_left' && bal(7) === wb && qty(7, 'war_band') === 0,
+    `the first ${say(A)}, the second ${say(B)}; purse ${bal(7)}, war band ×${qty(7, 'war_band')}`);
+  const denied = e => !!e && /permission denied/.test(e);
+  const anonSell = sql(`set role anon; select public.sell_card('war_band', 'x', ${wb});`);
+  const userRead = sql(as(6, 'select count(*) from public.gold_sales;'));
+  const inner = sql(as(6, "select public.card_sell_price('war_band');"));
+  ck('theSaleDoorsAreSealed', denied(anonSell.error) && denied(userRead.error) && denied(inner.error),
+    [['anon sells', anonSell], ['a player reads the sales', userRead], ['a player asks the inner price', inner]].filter(([, x]) => !denied(x.error)).map(([k]) => k + ' was allowed').join('; ') || 'every one refused');
+  const mine = json(as(6, 'select public.my_gold();'));
+  ck('myGoldSaysTheTradersShare', mine.ok === true && mine.sell_pct === 80 && mine.sales === 2 && mine.sold === wb + vt, `sell_pct ${mine.sell_pct}, sales ${mine.sales}, sold ${mine.sold}`);
+}
+
 /* ================= the game, in a browser ================= */
 const types = { '.html': 'text/html', '.js': 'text/javascript', '.png': 'image/png', '.webp': 'image/webp', '.jpg': 'image/jpeg', '.json': 'application/json',
   '.woff2': 'font/woff2', '.css': 'text/css', '.svg': 'image/svg+xml', '.mp3': 'audio/mpeg', '.ogg': 'audio/ogg' };
@@ -296,7 +362,7 @@ async function page(o) {
    purchase is made */
 const MOCK = `
   window.__G = (() => {
-    const st = { uid: 'uid-G', calls: [], ends: {}, wallet: 0, buys: {}, counts: {}, lose: 0, prices: null };
+    const st = { uid: 'uid-G', calls: [], ends: {}, wallet: 0, buys: {}, sales: {}, counts: {}, lose: 0, prices: null };
     const session = () => ({ access_token: 't-' + st.uid, refresh_token: 'r', user: { id: st.uid } });
     const auth = {
       async getSession() { return { data: { session: null }, error: null }; },
@@ -322,6 +388,17 @@ const MOCK = `
         lost();
         return { ok: true, card: a.p_card_key, price: pr, gold: st.wallet, qty: st.counts[a.p_card_key] };
       },
+      // 0020's door, its rules: four fifths, once per sale id, never a card not held
+      sell_card(a) {
+        const lost = () => { if (st.lose > 0) { st.lose--; throw new TypeError('Failed to fetch'); } };
+        const k = a.p_card_key, pr = Math.floor(price(k) * 0.8 + 0.5);
+        if (st.sales[a.p_sale_id]) { lost(); return { ok: true, already: true, card: k, price: pr, gold: st.wallet, qty: st.counts[k] || 0 }; }
+        if (a.p_price != null && a.p_price !== pr) return { ok: false, reason: 'price_changed', price: pr, buy: price(k), gold: st.wallet };
+        if (!(st.counts[k] > 0)) return { ok: false, reason: 'none_left', price: pr, gold: st.wallet };
+        st.counts[k]--; st.wallet += pr; st.sales[a.p_sale_id] = 1;
+        lost();
+        return { ok: true, card: k, price: pr, gold: st.wallet, qty: st.counts[k] };
+      },
     };
     const rest = (method, path, body) => {
       st.calls.push({ method, path, body: body == null ? null : JSON.parse(JSON.stringify(body)) });
@@ -338,11 +415,16 @@ const MOCK = `
 {
   const { p, ctx } = await page();
   const g = await p.evaluate(() => ({ G: CFG.GOLD, prices: Object.fromEntries(Deck.CATALOG.map(c => [c.id, Deck.price(c.id)])),
+    sell: Object.fromEntries(Deck.CATALOG.map(c => [c.id, Gold.sellPrice(c.id)])),
     drops: CFG.CARDS.DROPS, bonus: CFG.CARDS.BONUS }));
   const off = Object.keys(SQLN.prices).filter(k => SQLN.prices[k] !== g.prices[k]).concat(Object.keys(g.prices).filter(k => !(k in SQLN.prices)));
   ck('theRecordsNumbersAreTheGames', g.G.RATE === SQLN.rate && g.G.FLOOR === SQLN.floor && g.G.CAP === SQLN.cap &&
     [1, 2, 3].every((n, i) => g.G.PROLOGUE[n] === SQLN.pro[i]) && off.length === 0,
     `rate ${g.G.RATE}/${SQLN.rate}, floor ${g.G.FLOOR}/${SQLN.floor}, cap ${g.G.CAP}/${SQLN.cap}, journey ${[1, 2, 3].map(n => g.G.PROLOGUE[n])}/${SQLN.pro}; prices apart: ${off.join(', ') || 'none'}`);
+  // the trader's share and every card's sale price are the record's (0020's card_sell_pct, card_sell_price)
+  const soff = Object.keys(SQLN.sell).filter(k => SQLN.sell[k] !== g.sell[k]);
+  ck('theTradersShareIsTheRecords', Math.round(g.G.SELL * 100) === SQLN.sellPct && soff.length === 0,
+    `SELL ${g.G.SELL} / ${SQLN.sellPct}%; sale prices apart: ${soff.map(k => k + ' ' + g.sell[k] + '/' + SQLN.sell[k]).join(', ') || 'none'}`);
   // every tier a table can roll is one the record lets it grant (0019 widened moderate and hard)
   const TIERS = ['stone', 'bronze', 'iron', 'imperial', 'enlight'];
   const gap = [];
@@ -401,6 +483,9 @@ const MOCK = `
     const out = {};
     out.plate = !!document.getElementById('btnTitleStore');
     out.fromTitle = Store.open('title') && Screens.current === 'store';
+    // the Marketplace opens on its three offers; Buy shows every card of the catalog
+    out.offers = [...document.querySelectorAll('#scrStore .mkOffer')].filter(e => e.getClientRects().length).map(e => e.dataset.mode).join();
+    Store.setMode('buy');
     out.items = document.querySelectorAll('#scrStore .stItem').length;
     /* NO COUNT ON THE SHELF (build 224 — the operator: "remove the card
        numbers in the store, you can buy as many as you want that you have
@@ -432,7 +517,8 @@ const MOCK = `
     out.pausePurse = !!document.querySelector('#scrSetx .sxGold');
     return out;
   });
-  ck('theStoreOpensFromTheTitle', r.plate && r.title === 'row' && r.fromTitle && r.items === 36 && r.backHome, `plate ${r.plate} (${r.title}), opened ${r.fromTitle} with ${r.items} cards, back to the title ${r.backHome}`);
+  ck('theStoreOpensFromTheTitle', r.plate && r.title === 'row' && r.fromTitle && r.offers === 'buy,sell,own' && r.items === 36 && r.backHome,
+    `plate ${r.plate} (${r.title}), opened ${r.fromTitle} on its offers (${r.offers}), Buy with ${r.items} cards, back to the title ${r.backHome}`);
   ck('andNoWareWearsACount', r.marks === 0 && r.bought === 1 && r.marks2 === 0, `${r.marks} of ${r.items} wares wear a count, every card held once; one bought through the stall, then ${r.marks2}`);
   ck('butNeverOverAGame', r.inGameOpen === false && r.inGameShow !== 'store' && !r.pauseDoor && !r.pauseDoorGeneral && r.pausePurse,
     `Store.open ${r.inGameOpen}, Screens.show('store') → ${r.inGameShow}, the pause's store door ${r.pauseDoor || r.pauseDoorGeneral}, its purse shown ${r.pausePurse}`);
@@ -552,6 +638,149 @@ const MOCK = `
   await t.ctx.close();
   ck('theTestLinkSetsOnlyAToyPurse', !real.test && real.gold === 0 && toy.test && toy.gold === 777 && !/gold=/.test(toy.url),
     `a real purse after ?gold=5000: ${real.gold}; a test deck's after ?gold=777: ${toy.gold} (the link taken out: ${!/gold=/.test(toy.url)})`);
+}
+
+/* ================= 17. A SALE, ON THE DEVICE AND ON THE RECORD ================= */
+{
+  const { p, ctx } = await page({ q: '?prologue=0&cards=all' });
+  const r = await p.evaluate(async () => {
+    const c = Deck.col(); c.gold = 0; Deck._add('war_band', 1); Deck.saveCol();
+    const out = { mode: Gold.mode(), price: Gold.sellPrice('war_band'), list: Deck.price('war_band'), n0: Deck.count('war_band') };
+    out.a = await Gold.sell('war_band');
+    out.g1 = Gold.balance(); out.n1 = Deck.count('war_band');
+    out.b = await Gold.sell('war_band');
+    out.n2 = Deck.count('war_band');
+    out.c = await Gold.sell('war_band');
+    out.g3 = Gold.balance(); out.n3 = Deck.count('war_band');
+    out.disk = JSON.parse(localStorage.getItem(Deck.KEY));
+    return out;
+  });
+  ck('aLocalSaleTakesTheCardAndPaysFourFifths', r.mode === 'local' && r.price === Math.floor(r.list * 0.8 + 0.5) && r.a.ok && r.g1 === r.price && r.n1 === r.n0 - 1,
+    `mode ${r.mode}: ${r.list} → ${r.price} for the trader; ${r.a.ok ? 'sold' : r.a.reason}, purse 0 → ${r.g1}, held ×${r.n0} → ×${r.n1}`);
+  ck('andNoneLeftIsNoneLeft', r.b.ok && r.n2 === 0 && !r.c.ok && r.c.reason === 'none_left' && r.g3 === r.price * 2 && r.n3 === 0 && r.disk.gold === r.g3 && !r.disk.counts.war_band,
+    `the last one ${r.b.ok ? 'sold' : r.b.reason}, then ${r.c.reason}; purse ${r.g3}, the disk ${r.disk.gold} with ×${r.disk.counts.war_band || 0}`);
+  await ctx.close();
+  // the record: an answer lost on the wire is asked again under the same sale id
+  const m = await page({ mock: MOCK });
+  await m.p.waitForFunction(() => Backend.isReady && Backend.isReady() && Backend.uid, null, { timeout: 20000 });
+  const q = await m.p.evaluate(async () => {
+    __G.st.wallet = 10;
+    __G.st.prices = Object.fromEntries(Deck.CATALOG.map(c => [c.id, Deck.price(c.id)]));
+    __G.st.counts = { war_band: 2 };
+    await Deck.sync('test');
+    const out = { mode: Gold.mode(), g0: Gold.balance(), n0: Deck.count('war_band'), price: Gold.sellPrice('war_band') };
+    __G.st.lose = 6;
+    out.first = await Gold.sell('war_band');
+    __G.st.lose = 0;
+    out.second = await Gold.sell('war_band');
+    out.g1 = Gold.balance(); out.n1 = Deck.count('war_band');
+    out.server = { wallet: __G.st.wallet, n: __G.st.counts.war_band, sales: Object.keys(__G.st.sales).length };
+    out.ids = __G.st.calls.filter(c => c.path === '/rpc/sell_card').map(c => c.body.p_sale_id);
+    return out;
+  });
+  ck('aLostSaleIsAskedAgainUnderTheSameId', q.mode === 'cloud' && q.n0 === 2 && q.first.ok === false && q.first.reason === 'network' && q.second.ok === true && q.second.already === true &&
+    new Set(q.ids).size === 1 && q.server.sales === 1 && q.server.n === 1 && q.server.wallet === 10 + q.price && q.g1 === 10 + q.price && q.n1 === 1,
+    `mode ${q.mode}; the first answer lost (${q.first.reason}), again ${say(q.second)} under ${new Set(q.ids).size === 1 ? 'the same id' : 'a NEW id'}; ` +
+    `the record ${q.server.sales} sale, ×${q.server.n}, ${q.server.wallet} gold; the device ${q.g1} gold, ×${q.n1}`);
+  await m.ctx.close();
+}
+
+/* ================= 18. THE MARKETPLACE ================= */
+{
+  /* the hall at seven windows: the trader in view, his face clear of his
+     words, the three offers whole inside the window and answering a tap
+     where they are drawn; then Buy's case, a card held up (its face, then
+     its back), and Escape stepping back one thing at a time */
+  const sizes = [[390, 844, 3], [375, 667, 2], [360, 740, 3], [844, 390, 3], [768, 1024, 2], [1280, 720, 1], [1440, 900, 2]];
+  const bad = [], held = [];
+  for (const [w, h, dpr] of sizes) {
+    const { p, ctx } = await page({ q: '?prologue=0&cards=all', w, h, dpr });
+    const r = await p.evaluate(async () => {
+      Store.open('title');
+      await new Promise(res => setTimeout(res, 250));
+      const W = innerWidth, H = innerHeight, box = e => e.getBoundingClientRect();
+      const inside = b => b.left >= -1 && b.top >= -1 && b.right <= W + 1 && b.bottom <= H + 1;
+      const hit = e => { const b = box(e), t = document.elementFromPoint(b.left + b.width / 2, b.top + b.height / 2); return !!t && e.contains(t); };
+      const G = Store._geo, T = Store.TR, tr = box(document.querySelector('#scrStore .mkTrader'));
+      const face = { left: G.x0 + (G.g.tx - T.face) * G.s, right: G.x0 + (G.g.tx + T.face) * G.s, top: G.y0 + (G.g.top - T.foot + T.head) * G.s, bottom: G.y0 + (G.g.top - T.foot + T.head + 90) * G.s };
+      const say = box(document.querySelector('#scrStore .mkSay')), head = box(document.querySelector('#scrStore .stHead')).bottom;
+      const over = (a, b) => Math.max(0, Math.min(a.right, b.right) - Math.max(a.left, b.left)) * Math.max(0, Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top));
+      const offers = [...document.querySelectorAll('#scrStore .mkOffer')];
+      const out = {
+        traderTall: tr.height / H, faceIn: face.top >= head - 2 && face.left >= 0 && face.right <= W,
+        faceCovered: over(say, face) / ((face.right - face.left) * (face.bottom - face.top)),
+        sayIn: inside(say) && say.top >= head - 1,
+        offers: offers.map(e => ({ m: e.dataset.mode, in: inside(box(e)), hit: hit(e) })),
+      };
+      Store.setMode('buy');
+      // the case slides up as it comes (220 ms): measured where it comes to rest
+      await new Promise(res => setTimeout(res, 120));
+      await Promise.race([Promise.all(document.getAnimations().map(a => a.finished.catch(() => {}))), new Promise(res => setTimeout(res, 1500))]);
+      const caseB = box(document.querySelector('#scrStore .stCase'));
+      const ware = document.querySelector('#scrStore .stItem .ccard');
+      out.caseIn = inside(caseB) && caseB.height > 200;
+      out.ware = ware ? box(ware).width : 0;
+      out.sayClear = over(box(document.querySelector('#scrStore .mkSay')), caseB) === 0;
+      Store.look('iron_legion');
+      await new Promise(res => setTimeout(res, 120));
+      const f = document.querySelector('#scrStore .stLook .ccard');
+      out.frontFirst = !!f && !f.classList.contains('flip');
+      await new Promise(res => setTimeout(res, 800));
+      out.thenBack = !!f && f.classList.contains('flip');
+      out.big = f ? box(f).width : 0;
+      const deal = document.querySelector('#scrStore .stBuy'), put = document.querySelector('#scrStore .stPut');
+      out.dealIn = inside(box(deal)) && inside(box(put)) && hit(deal) && hit(put) && box(f).top >= head - 1;
+      out.says = /Iron Legion/.test(document.querySelector('#scrStore .mkSayT').textContent);
+      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+      out.esc1 = Store._id === null && Store._mode === 'buy';
+      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+      out.esc2 = Store._mode === 'land' && Screens.current === 'store';
+      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+      out.esc3 = Screens.current === 'title';
+      return out;
+    });
+    const tag = `${w}x${h}`;
+    if (!(r.traderTall >= 0.2)) bad.push(`${tag} trader only ${(r.traderTall * 100).toFixed(0)}% of the height`);
+    if (!r.faceIn) bad.push(`${tag} his face out of view`);
+    if (r.faceCovered > 0.12) bad.push(`${tag} his words cover ${(r.faceCovered * 100).toFixed(0)}% of his face`);
+    if (!r.sayIn) bad.push(`${tag} his words leave the window`);
+    for (const o of r.offers) if (!o.in || !o.hit) bad.push(`${tag} ${o.m} ${!o.in ? 'outside the window' : 'covered'}`);
+    if (r.offers.length !== 3) bad.push(`${tag} ${r.offers.length} offers`);
+    if (!r.caseIn) bad.push(`${tag} the case`);
+    if (!r.sayClear) bad.push(`${tag} his words over the case`);
+    if (!(r.ware >= 100)) bad.push(`${tag} a ware ${r.ware}px wide`);
+    held.push(`${tag} ${Math.round(r.ware)}→${Math.round(r.big)}px`);
+    if (!r.frontFirst || !r.thenBack) bad.push(`${tag} the held card did not show its face, then its back (${r.frontFirst}, ${r.thenBack})`);
+    if (!(r.big > r.ware)) bad.push(`${tag} the held card no bigger than the shelf's`);
+    if (!r.dealIn) bad.push(`${tag} Buy / Put back not in view and answering`);
+    if (!r.says) bad.push(`${tag} he says nothing of the card`);
+    if (!r.esc1 || !r.esc2 || !r.esc3) bad.push(`${tag} Escape steps ${r.esc1}/${r.esc2}/${r.esc3}`);
+    await ctx.close();
+  }
+  ck('theHallOpensOnTheTraderAndHisThreeOffers', bad.filter(x => !/held|Buy \/|Escape|says|case|ware/.test(x)).length === 0, bad.filter(x => !/held|Buy \/|Escape|says|case|ware/.test(x)).join(' | ') || sizes.length + ' windows: the trader in view, his face clear, three offers whole and answering');
+  ck('aCardHeldUpShowsItsFaceThenItsBack', bad.filter(x => /held|Buy \/|says|case|ware/.test(x)).length === 0, bad.filter(x => /held|Buy \/|says|case|ware/.test(x)).join(' | ') || held.join(', '));
+  ck('escapeStepsBackOneThingAtATime', bad.filter(x => /Escape/.test(x)).length === 0, bad.filter(x => /Escape/.test(x)).join(' | ') || 'the card, the mode, the hall');
+  // SELL through the screen: the last copy asks twice, the coins come home
+  const { p, ctx } = await page({ q: '?prologue=0&cards=all' });
+  const r = await p.evaluate(async () => {
+    const c = Deck.col(); c.gold = 0; Deck.saveCol();
+    Store.open('title', 'sell');
+    await new Promise(res => setTimeout(res, 150));
+    const out = { listed: document.querySelectorAll('#scrStore .stItem').length, held: Deck.CATALOG.filter(x => Deck.count(x.id) > 0).length, n0: Deck.count('war_band') };
+    Store.look('war_band');
+    await Store._tapDeal();
+    out.armed = Deck.count('war_band') === out.n0 && /only one/i.test(document.querySelector('#scrStore .stMsg').textContent);
+    await new Promise(res => setTimeout(res, 450));
+    await Store._tapDeal();
+    await new Promise(res => setTimeout(res, 2600));
+    out.n1 = Deck.count('war_band'); out.g1 = Gold.balance(); out.price = Gold.sellPrice('war_band');
+    out.gone = !document.querySelector('#scrStore .stItem[data-card="war_band"]');
+    out.closed = Store._id === null && !Store._anim;
+    return out;
+  });
+  ck('sellingThroughTheScreenTakesTheCardAndPays', r.listed === r.held && r.armed && r.n1 === r.n0 - 1 && r.g1 === r.price && r.gone && r.closed,
+    `${r.listed} of ${r.held} held cards listed; the only war band asked twice ${r.armed}; ×${r.n0} → ×${r.n1}, purse ${r.g1} (${r.price}); off the shelf ${r.gone}`);
+  await ctx.close();
 }
 
 /* ================= 16. THE END SCREEN'S GOLD ================= */

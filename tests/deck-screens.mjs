@@ -191,13 +191,13 @@ window.__shown = (el) => !!el && el.getClientRects().length > 0 && getComputedSt
   const a = await p.evaluate(() => {
     const out = {};
     out.on = Deck.on();
-    const btn = document.getElementById('btnTitleCards');
-    out.inRow = !!document.querySelector('#scrTitle .trow3 #btnTitleCards');
-    out.four = document.querySelector('#scrTitle .trow3').classList.contains('clFour');
-    // the word itself — the night title (js/titlescreen.js, staged with the
-    // deck) sets a vector icon before it, as it does on every plaque
+    /* THE CARDS LIVE IN THE MARKETPLACE (build 225 — the operator: "now
+       there's only one button for the shopkeeper, not 2"): no Cards plaque;
+       the Marketplace's plate in the secondary row is the deck's one door */
+    const btn = document.getElementById('btnTitleStore');
+    out.cards = !!document.getElementById('btnTitleCards');
+    out.inRow = !!document.querySelector('#scrTitle .trow3 #btnTitleStore');
     out.label = btn ? [...btn.querySelector('.blab').childNodes].filter(n => n.nodeType === 3).map(n => n.textContent).join('').trim() : '';
-    out.n = btn ? btn.querySelector('.clN').textContent : '';
     // no PIXEL icon: the only picture a minor plaque may carry is the night's vector (.t2i, smooth)
     out.svg = btn ? [...btn.querySelectorAll('.blab svg')].some(g => !g.classList.contains('t2i') || g.getAttribute('shape-rendering') === 'crispEdges') : true;
     out.big = btn ? btn.classList.contains('big') : true;
@@ -208,15 +208,17 @@ window.__shown = (el) => !!el && el.getClientRects().length > 0 && getComputedSt
     out.hand = JSON.stringify(Deck.col().counts);
     Screens.show('title');   // a second visit deals nothing more
     out.total2 = Deck.total();
-    out.one = document.querySelectorAll('#btnTitleCards').length;
+    out.one = document.querySelectorAll('#btnTitleStore').length + document.querySelectorAll('#btnTitleCards').length;
+    out.toDeck = Store.open('title', 'own') && Screens.current === 'store' && document.querySelectorAll('#scrStore .stItem').length;
+    Store.back();
     return out;
   });
-  ck('theTitleWearsACardsPlaque', a.on && a.inRow && a.four && a.label === 'Cards' && !a.svg && !a.big && !a.emoji,
-    `in the secondary row ${a.inRow}, folded ${a.four}, "${a.label}", icon ${a.svg}, emoji ${a.emoji}`);
+  ck('theCardsLiveInTheMarketplace', a.on && !a.cards && a.inRow && a.label === 'Marketplace' && !a.svg && !a.big && !a.emoji && a.toDeck === 36,
+    `a Cards plaque ${a.cards}; the Marketplace in the secondary row ${a.inRow}, "${a.label}", icon ${a.svg}, emoji ${a.emoji}; its deck shows ${a.toDeck} cards`);
   // the three, and since build 223 the Store with the purse on it (js/gold.js)
   // the three — the Store a small plate beside the Cards since build 224 (js/gold.js)
   ck('andTheHeroPlaquesAreStillThree', a.heroes === 3, a.heroes + ' hero plaques' + (a.store ? ' (the Store in the row)' : ''));
-  ck('theStarterHandIsDealtOnceOnTheTitle', a.total === 3 && a.total2 === 3 && a.one === 1 && a.n === '3', `${a.hand}, plaque says ${a.n}`);
+  ck('theStarterHandIsDealtOnceOnTheTitle', a.total === 3 && a.total2 === 3 && a.one === 1, `${a.hand}, ${a.one} card door on the title`);
   /* the same measurement tests/boot.mjs noTitleLabelRunsOffItsPlaque makes,
      with the fourth plaque in the row: four across cannot fit "Settings",
      two by two leaves every label room */
@@ -231,9 +233,9 @@ window.__shown = (el) => !!el && el.getClientRects().length > 0 && getComputedSt
       return { t: lab.textContent.trim(), slack: +(inner - r.width).toFixed(1), h: r.height };
     }));
     for (const r of rows) if (r.slack < 2 || r.h > 26) tight.push(`${w}px ${r.t} slack=${r.slack}`);
-    if (rows.length !== 4) tight.push(`${w}px ${rows.length} plaques`);
+    if (rows.length !== 3) tight.push(`${w}px ${rows.length} plaques`);
   }
-  ck('noTitleLabelRunsOffItsPlaque', tight.length === 0, tight.join(' | ') || 'all four fit at 320-430px');
+  ck('noTitleLabelRunsOffItsPlaque', tight.length === 0, tight.join(' | ') || 'all three fit at 320-430px');
   await p.close();
 }
 

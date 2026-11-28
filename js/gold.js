@@ -159,6 +159,102 @@ const Gold = {
     if (d.reason === 'price_changed') return { ok: false, reason: 'price_changed', price: Deck.price(id), gold: c.gold };
     return { ok: false, reason: d.reason || 'refused', price, gold: c.gold };
   },
+  /* ---------------- THE SALE (build 225, the Marketplace) ----------------
+     sell(id) → { ok, card, price, gold, already } or { ok: false, reason,
+     price, gold }. The trader pays SELL of the card's price (CFG.GOLD.SELL,
+     0020's card_sell_pct()), rounded half up. On the record it is ONE door,
+     0020's sell_card: the card leaves, the gold lands and the sale is
+     written in one transaction under the player's lock; a sale whose answer
+     was lost keeps its id (c.spend) and asks again, so one press is never
+     paid twice. A device the cloud never talks to sells from its mirror by
+     the same rules under the purse's lock. Reasons: none_left (the deck
+     holds none), price_changed, offline, not_yet (no 0020 on the record),
+     network, full, busy. */
+  sellPrice(id) {
+    const p = window.Deck ? Deck.price(id) : 0, k = (typeof CFG !== 'undefined' && CFG.GOLD && CFG.GOLD.SELL) || 0.8;
+    return p > 0 ? Math.floor(p * k + 0.5) : 0;
+  },
+  async sell(id) {
+    if (!this.on() || !window.Deck || !Deck.card(id) || !(this.sellPrice(id) > 0)) return { ok: false, reason: 'not_for_sale' };
+    if (this._buying) return { ok: false, reason: 'busy' };
+    const mode = this.mode();
+    if (mode !== 'cloud' && mode !== 'local') return { ok: false, reason: 'offline', price: this.sellPrice(id), gold: this.balance() };
+    this._buying = true;
+    try {
+      const r = await this._locked(() => mode === 'local' ? this._sellLocal(id) : this._sellCloud(id));
+      if (r && r.ok) {
+        const c = Deck.card(id);
+        Deck.track('store', { ev: 'sell', card: id, tier: c.tier, price: r.price, gold: r.gold, again: !!r.already });
+      }
+      return r;
+    } catch (e) {
+      console.error('sale', e);
+      return { ok: false, reason: 'network' };
+    } finally { this._buying = false; }
+  },
+  _sid(c, id, price) {
+    const p = c.spend;
+    if (p && p.card === id && Date.now() - (p.at || 0) < this.PEND_MS) return p.id;
+    const sid = 's' + Date.now().toString(36) + Math.random().toString(36).slice(2, 9);
+    c.spend = { id: sid, card: id, price, at: Date.now() };
+    return sid;
+  },
+  _unspend(c, sid) { if (c.spend && (!sid || c.spend.id === sid)) delete c.spend; },
+  // a sale lands once, whatever answers twice (c.sales, by sale id)
+  _applySale(c, sid, id, price, gold) {
+    if (!c.sales || typeof c.sales !== 'object') c.sales = {};
+    if (!c.sales[sid]) {
+      c.sales[sid] = { card: id, price, at: Date.now() };
+      Deck._add(id, -1);
+    }
+    c.gold = Math.max(0, Math.min(1e7, Math.floor(gold)));
+    c.rev = (c.rev | 0) + 1;
+    this._unspend(c, sid);
+  },
+  _sellLocal(id) {
+    const c = this._fresh(), price = this.sellPrice(id);
+    const sid = this._sid(c, id, price);
+    if (c.sales && c.sales[sid]) { this._unspend(c, sid); Deck.saveCol(); return { ok: true, card: id, price, gold: c.gold, already: true }; }
+    if (!((c.counts[id] || 0) > 0)) { this._unspend(c, sid); Deck.saveCol(); return { ok: false, reason: 'none_left', price, gold: c.gold }; }
+    if (c.gold + price > 1e7) { this._unspend(c, sid); Deck.saveCol(); return { ok: false, reason: 'full', price, gold: c.gold }; }
+    this._applySale(c, sid, id, price, c.gold + price);
+    Deck.saveCol();
+    return { ok: true, card: id, price, gold: c.gold };
+  },
+  async _sellCloud(id) {
+    // the deck's own ops and the gold go up first, so the record holds what the device shows
+    let c = this._fresh();
+    if (c.queue.length || c.gq.length) { try { await Deck.sync('sell'); } catch (e) {} c = this._fresh(); }
+    const price = this.sellPrice(id);
+    if (!((c.counts[id] || 0) > 0) && !(c.spend && c.spend.card === id)) return { ok: false, reason: 'none_left', price, gold: c.gold };
+    const sid = this._sid(c, id, price);
+    Deck.saveCol();
+    let r = null;
+    try { r = await window.Backend.rpc('sell_card', { p_card_key: id, p_sale_id: sid, p_price: price }); } catch (e) { r = null; }
+    c = this._fresh();
+    const d = r && r.ok ? r.data : null;
+    if (!d || typeof d.ok !== 'boolean') {
+      const code = r && r.error && r.error.code;
+      return { ok: false, reason: code === 404 ? 'not_yet' : 'network', price, gold: c.gold };
+    }
+    if (d.ok) {
+      const paid = Math.floor(+d.price) > 0 ? Math.floor(+d.price) : price;
+      this._applySale(c, sid, id, paid, +d.gold >= 0 ? +d.gold : c.gold + (c.sales && c.sales[sid] ? 0 : paid));
+      Deck.saveCol();
+      return { ok: true, card: id, price: paid, gold: c.gold, already: !!d.already };
+    }
+    this._unspend(c, sid);
+    if (+d.gold >= 0) c.gold = Math.floor(+d.gold);
+    c.rev = (c.rev | 0) + 1;
+    if (d.reason === 'price_changed' && +d.buy > 0) {
+      if (!c.prices || typeof c.prices !== 'object') c.prices = {};
+      c.prices[id] = Math.floor(+d.buy);
+    }
+    Deck.saveCol();
+    if (d.reason === 'price_changed') return { ok: false, reason: 'price_changed', price: this.sellPrice(id), gold: c.gold };
+    return { ok: false, reason: d.reason || 'refused', price, gold: c.gold };
+  },
+
   // the words a refusal is told in (the store says them on the card)
   why(r) {
     if (!r) return '';
@@ -170,6 +266,8 @@ const Gold = {
       case 'not_yet': return 'The store is not open yet. Your gold is safe.';
       case 'network': return 'Couldn’t reach the trader. Your gold is safe — try again.';
       case 'full': return 'Your deck holds as many of these as it can.';
+      case 'none_left': return 'You hold none of these to sell.';
+      case 'not_yet_sell': return 'The trader isn’t buying cards yet. Your deck is safe.';
       case 'busy': return '';
       default: return 'The trader can’t sell that right now.';
     }
@@ -203,14 +301,15 @@ const Gold = {
     return done;
   },
 
-  /* ---------------- THE TITLE: the Store's plate, the purse on it ----------------
+  /* ---------------- THE TITLE: the Marketplace's plate, the purse on it ----------------
      Screens.onTitle calls in before the night dresses its plates
      (TitleScreen.ICON names its pouch); the journey's title puts it away
-     with the deck's collection (prologue.js). Since build 224 it is a SMALL
-     plate in the secondary row, where Load stood (the operator: "Move load
-     from main menu to settings… Move store to the small load button spot"),
-     struck gold beside the Cards (TitleScreen.KIND), the purse in a coin
-     slot beside the word as the deck's count is beside the Cards' */
+     (prologue.js). Since build 225 it is THE ONE door to the cards (the
+     operator: "now there's only one button for the shopkeeper, not 2"): the
+     Store and the Cards plates became one Marketplace plate, struck gold
+     (TitleScreen.KIND), the full width of the secondary row under Settings
+     and the Guide, the purse in a coin slot beside the word. The id stays
+     btnTitleStore. */
   onTitle() {
     const row = document.querySelector('#scrTitle .trow3');
     let b = document.getElementById('btnTitleStore');
@@ -221,10 +320,9 @@ const Gold = {
       b = document.createElement('button');
       b.className = 'abtn';
       b.id = 'btnTitleStore';
-      b.innerHTML = '<span class="blab">Store<b class="tGold" aria-hidden="true">' + this.mark(12) + '<i class="tGoldN">0</i></b></span>';
+      b.innerHTML = '<span class="blab">Marketplace<b class="tGold" aria-hidden="true">' + this.mark(12) + '<i class="tGoldN">0</i></b></span>';
       b.addEventListener('click', () => { if (window.Store) Store.open('title'); });
-      // after Settings and the Guide, before the Cards (whichever came first)
-      row.insertBefore(b, document.getElementById('btnTitleCards'));
+      row.appendChild(b);
     }
     this.paintTitle();
     this._warmStall();
@@ -232,9 +330,9 @@ const Gold = {
     // the record's purse, asked as the title is read (a sign-in brings its own sync)
     if (this.mode() === 'cloud' && !this._titleSynced) { this._titleSynced = true; try { Deck.sync('title'); } catch (e) {} }
   },
-  /* the stall's painting is fetched while the title is read, in idle time —
-     one picture, the one the store's <picture> will choose (wide on a
-     landscape window, webp) — so the store never opens on a bare night */
+  /* the hut's painting and its trader are fetched while the title is read,
+     in idle time — the painting the Marketplace will choose (wide on a
+     landscape window, webp) — so it never opens on a bare night */
   _warmStall() {
     if (this._warmed || typeof Image === 'undefined') return;
     this._warmed = true;
@@ -242,7 +340,8 @@ const Gold = {
       let wide = false;
       try { wide = matchMedia('(min-aspect-ratio: 4/3)').matches; } catch (e) {}
       const v = (typeof CFG !== 'undefined' && CFG.ART_V) || 1;
-      try { new Image().src = 'assets/ui/store/stall-' + (wide ? 'wide' : 'tall') + '.webp?v=' + v; } catch (e) {}
+      try { new Image().src = 'assets/ui/store/hut-' + (wide ? 'wide' : 'tall') + '.webp?v=' + v; } catch (e) {}
+      try { new Image().src = 'assets/ui/store/trader.png?v=' + v; } catch (e) {}
     };
     if (window.requestIdleCallback) requestIdleCallback(go, { timeout: 8000 }); else setTimeout(go, 3000);
   },
@@ -251,7 +350,7 @@ const Gold = {
     if (!b) return;
     const g = this.balance();
     b.querySelector('.tGoldN').textContent = this.short(g);
-    b.setAttribute('aria-label', 'Store, ' + this.fmt(g) + ' gold in your purse');
+    b.setAttribute('aria-label', 'Marketplace, ' + this.fmt(g) + ' gold in your purse');
   },
 
   /* ---------------- THE COINS ---------------- */

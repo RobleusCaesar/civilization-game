@@ -22,6 +22,16 @@
    seen on this device. */
 const PATCH_NOTES = [
   {
+    build: 225, date: '2026-11-28', title: 'The Marketplace',
+    items: [
+      'The Trader and your Cards are now one place: the Marketplace, a timber trading hall on the main menu where the trader stands behind his counter and greets you.',
+      'Choose Buy, Sell or Your Deck. Your cards are laid out in a case on his counter, and the tier buttons jump straight to Stone, Bronze, Iron, Imperial or Mythic.',
+      'Tap a card and he holds it up: you see its face, then it turns over so you can read what it does. Buy it, sell it, or put it back.',
+      'New: sell cards you no longer need. The trader pays four fifths of his own price, and asks twice before you sell your last copy of a card.',
+      'He has something to say about every card you pick up.',
+    ],
+  },
+  {
     build: 224, date: '2026-11-27', title: 'Gold and the Trader',
     items: [
       'Every game that earns a card now pays gold too: one gold for every 200 points, at least 10 and at most 150. Coins burst from the pedestal on the end screen and pour into your purse.',

@@ -334,6 +334,7 @@ const Deck = {
     if (c.goldRuns) { const gk = Object.keys(c.goldRuns); if (gk.length > 60) for (const k of gk.slice(0, gk.length - 60)) delete c.goldRuns[k]; }
     if (Array.isArray(c.gq) && c.gq.length > CFG.CARDS.QUEUE_MAX) c.gq.splice(0, c.gq.length - CFG.CARDS.QUEUE_MAX);
     if (c.buys) { const bk = Object.keys(c.buys); if (bk.length > 40) for (const k of bk.slice(0, bk.length - 40)) delete c.buys[k]; }
+    if (c.sales) { const sk = Object.keys(c.sales); if (sk.length > 40) for (const k of sk.slice(0, sk.length - 40)) delete c.sales[k]; }
     this._set(this.KEY, JSON.stringify(c));
     // what the disk now READS (a write refused by a full disk leaves the old)
     this._colRaw = this._get(this.KEY);
