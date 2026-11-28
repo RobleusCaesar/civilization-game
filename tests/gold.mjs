@@ -724,8 +724,12 @@ const MOCK = `
       out.fire = { anim: fcs.animationName !== 'none' && fcs.animationPlayState === 'running', steps: +((fcs.animationTimingFunction.match(/steps\((\d+)/) || [])[1]), n: F.n,
         at: Math.abs(fb.left - (G.x0 + F.x * G.s)) < 1 && Math.abs(fb.top - (G.y0 + F.y * G.s)) < 1 && Math.abs(fb.width - F.d * G.s) < 1 };
       const ctop = G.y0 + G.g.top * G.s, cfront = G.y0 + G.g.front * G.s, ob = offers.map(box);
-      out.props = [...document.querySelectorAll('#scrStore .mkProp')].map(e => { const b = box(e);
-        return { k: e.dataset.prop, shown: !e.hidden && b.width > 8, cx: (b.left + b.right) / 2, depth: (b.bottom - ctop) / (cfront - ctop), in: inside(b), under: ob.some(o => over(o, b) > 0) }; });
+      /* build 231 — the operator: "the coins are a bit... sticker ish … replace them
+         with a Neolithic beer stein … the right size": painted into the hall at its
+         own pixel size (the file twice the master, like the hut) */
+      out.props = [...document.querySelectorAll('#scrStore .mkItem')].map(e => { const b = box(e), I = Store.ITEMS[e.dataset.item][Store._key];
+        return { k: e.dataset.item, shown: !e.hidden && b.width > 8 && e.complete && e.naturalWidth > 0, cx: (b.left + b.right) / 2, depth: (b.bottom - ctop) / (cfront - ctop), in: inside(b), under: ob.some(o => over(o, b) > 0),
+          px: Math.abs(b.width - I.w * G.s) < 1 && Math.abs(b.left - (G.x0 + I.x * G.s)) < 1 && e.naturalWidth === I.w * 2 && e.naturalHeight === I.h * 2 }; });
       const row = document.querySelector('#scrStore .mkOffers'), rb = box(row);
       out.row = !row.classList.contains('col') && !row.classList.contains('side') ? Math.abs((rb.left + rb.right) / 2 - W / 2) : null;
       out.side = row.classList.contains('side');
@@ -763,10 +767,9 @@ const MOCK = `
       const P = Object.fromEntries(r.props.map(x => [x.k, x])), shown = r.props.filter(x => x.shown);
       const why = [];
       if (!r.fire.anim || r.fire.steps !== r.fire.n || !r.fire.at) why.push(`the fire (running ${r.fire.anim}, steps ${r.fire.steps} for ${r.fire.n} frames, over the painting's own ${r.fire.at})`);
-      if (!P.pile || !P.pile.shown || !(P.pile.cx < r.tx) || !(P.pile.depth > 0.4 && P.pile.depth < 0.8)) why.push(`the gold (shown ${P.pile && P.pile.shown}, left of him ${P.pile && P.pile.cx < r.tx}, its foot ${P.pile && P.pile.depth.toFixed(2)} into the counter top)`);
-      if (!r.side && !(P.ledger && P.ledger.shown && P.scales && P.scales.shown)) why.push('no ledger or scales on the counter');
-      const line = ['pile', 'ledger', 'scales'].map(k => P[k]).filter(x => x && x.shown);
-      if (line.some((x, i) => i && !(x.cx > line[i - 1].cx))) why.push('the counter out of order');
+      if (!P.pile || !P.pile.shown || !(P.pile.cx < r.tx) || !(P.pile.depth > 0.4 && P.pile.depth < 0.95)) why.push(`the gold (shown ${P.pile && P.pile.shown}, left of him ${P.pile && P.pile.cx < r.tx}, its foot ${P.pile && P.pile.depth.toFixed(2)} into the counter top)`);
+      if (!r.side && !(P.stein && P.stein.shown && P.stein.cx > r.tx)) why.push(`no tankard on the counter at his right (${P.stein && P.stein.shown})`);
+      for (const x of shown) if (!x.px) why.push(`the ${x.k} not at the painting's own pixels`);
       for (const x of shown) if (!x.in || x.under || !(x.depth > 0.2 && x.depth < 1)) why.push(`the ${x.k} (in the window ${x.in}, under a sign ${x.under}, foot ${x.depth.toFixed(2)})`);
       if (r.row !== null && !(r.row < 1.5)) why.push(`the row ${r.row.toFixed(1)}px off the window's middle`);
       if (why.length) dressing.push(`${tag}: ${why.join(', ')}`);
@@ -820,7 +823,7 @@ const MOCK = `
     await ctx.close();
     const okF = k => f[k] && !f[k].lost && f[k].frames === f[k].n && f[k].h === f[k].d && f[k].off === 0 && f[k].clear > f[k].d * 4 && f[k].laid > 0;
     ck('andTheHearthFlickersAndTheCounterIsDressed', dressing.length === 0 && okF('tall') && okF('wide') && still === 'none',
-      (dressing.join(' | ') || 'gold on the left, the ledger and the scales on the right, ' + dressed.join(', ')) +
+      (dressing.join(' | ') || 'gold on the left, the tankard on the right, painted at the hall\'s own pixels, ' + dressed.join(', ')) +
       `; the strips ${['tall', 'wide'].map(k => f[k] && !f[k].lost ? `${k} ${f[k].frames} frames of ${f[k].n}, frame 0 lays ${f[k].laid} of the painting's pixels (${f[k].off} off), ${f[k].clear} clear` : k + ' missing').join('; ')}; reduced motion: ${still}`);
   }
   // SELL through the screen: the last copy asks twice, the coins come home
@@ -877,7 +880,7 @@ const MOCK = `
     const lum = e => { const c = getComputedStyle(e).color.match(/[\d.]+/g).map(Number); return (0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2]) / 255; };
     out.ink = [...document.querySelectorAll('#scrStore .mkOffer b, #scrStore .mkOffer small')].map(lum);
     out.banners = [...document.querySelectorAll('#scrStore .mkBanner')].filter(e => e.getClientRects().length && box(e).height > 60).length;
-    const pile = document.querySelector('#scrStore .mkPile'), pl = document.querySelector('#scrStore .mkPlinth');
+    const pile = document.querySelector('#scrStore .mkItem[data-item="pile"]'), pl = document.querySelector('#scrStore .mkPlinth');
     out.pile = !pile.hidden && box(pile).width > 30 && box(pile).bottom <= offersB;
     out.plinth = Math.abs(box(pl).bottom - H) < 1 && box(pl).height >= 12 && offersB <= box(pl).top;
     Store.setMode('buy');

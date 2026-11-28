@@ -59,15 +59,19 @@ const Store = {
   // the deal under the card takes this much of it: gap, buttons, the note line, padding
   // the plinth's rows of the counter top (plinth-{tall,wide}.png, master pixels)
   PLINTH: { tall: 20, wide: 18 },
-  /* what stands on the counter top (build 230 — the operator: "center the pile of
-     gold coins in the middle of the table (but they can still be on the left hand
-     side) … put 1 or 2 small items on the table"): each its picture's size in its
-     own pixels (`w`, `h`), drawn `k` times the painting's scale, and where its foot
-     stands on each painting's counter top (master pixels: the middle, the foot) */
-  PROPS: {
-    pile:   { file: 'pile.png',   w: 31, h: 17, k: 1.6, tall: [104, 489], wide: [168, 303] },
-    ledger: { file: 'ledger.png', w: 34, h: 22, k: 1.1, tall: [262, 490], wide: [496, 303] },
-    scales: { file: 'scales.png', w: 32, h: 32, k: 1.2, tall: [326, 489], wide: [566, 302] },
+  /* what stands on the counter top (build 231 — the operator, on build 230's heap
+     and its ledger and scales: "the coins are a bit... sticker ish. They look
+     smacked on to the scene, not part of the scene … the book and gold weights are
+     not of this era … replace them with a Neolithic beer stein … Make sure it's
+     the right size and fits the size of the merchant"): painted INTO the hall,
+     never laid on it — each a PixelLab inpaint of a crop of the hut's own master,
+     so it wears the painting's pixel size, its light and its shadow on the planks,
+     and only the pixels the painting changed are shipped
+     (item-{name}-{tall,wide}.png, Scale2x'd in a padded crop of the master like the
+     hut). Where each lies on each painting, in master pixels. */
+  ITEMS: {
+    pile:  { tall: { x: 76, y: 462, w: 60, h: 32 }, wide: { x: 116, y: 284, w: 60, h: 29 } },
+    stein: { tall: { x: 292, y: 437, w: 54, h: 55 }, wide: { x: 541, y: 250, w: 52, h: 52 } },
   },
   /* the hearth behind him flickers (build 230, "make the fire flicker in the
      background"): a strip of frames of the painting's own fire, the painting's
@@ -136,10 +140,10 @@ const Store = {
         '<i class="mkGlow"></i><i class="mkFire"></i>' +
         `<img class="mkTrader" alt="" decoding="async" src="${this._art('trader.png')}">` +
         '<img class="mkBg mkOver" alt="" decoding="async">' +
+        Object.keys(this.ITEMS).map(k => `<img class="mkItem" data-item="${k}" alt="" decoding="async">`).join('') +
         '<i class="mkExt"></i>' +
       '</div>' +
       '<i class="mkPlinth" aria-hidden="true"></i>' +
-      Object.keys(this.PROPS).map(k => `<img class="mkProp${k === 'pile' ? ' mkPile' : ''}" data-prop="${k}" alt="" aria-hidden="true" decoding="async" src="${this._art(this.PROPS[k].file)}">`).join('') +
       '<i class="mkSb" aria-hidden="true"></i>' +
       '<header class="stHead">' +
         '<button class="stBack" type="button" data-act="step" aria-label="Back"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M10.5 2.5 5 8l5.5 5.5" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="square"/></svg></button>' +
@@ -404,14 +408,13 @@ const Store = {
     Object.assign(el.querySelector('.mkGlow').style, { left: (F.x + F.d / 2 - F.d * 1.6) * s + 'px', top: (F.y + F.d * 0.62 - F.d * 1.6) * s + 'px', width: F.d * 3.2 * s + 'px', height: F.d * 3.2 * s + 'px' });
     Object.assign(fire.style, { left: F.x * s + 'px', top: F.y * s + 'px', width: F.d * s + 'px', height: F.d * s + 'px',
       backgroundImage: `url("${this._art('fire-' + key + '.png')}")`, backgroundSize: `${F.n * 100}% 100%`, animationDuration: F.ms + 'ms' });
-    // what stands on the counter top: a heap of gold on the left, a ledger and the
-    // scales on the right (the operator's mockup, build 230)
-    for (const im of el.querySelectorAll('.mkProp')) {
-      const P = this.PROPS[im.dataset.prop];
-      im.hidden = browse;
-      if (browse) continue;
-      const pw = P.w * s * P.k, ph2 = P.h * s * P.k, [mx, my] = P[key];
-      Object.assign(im.style, { left: x0 + mx * s - pw / 2 + 'px', top: y0 + my * s - ph2 + 'px', width: pw + 'px', height: ph2 + 'px' });
+    // what stands on the counter top, painted into the hall: a heap of gold on the
+    // left, a wooden tankard with an antler handle on the right (build 231)
+    for (const im of el.querySelectorAll('.mkItem')) {
+      const I = this.ITEMS[im.dataset.item][key];
+      if (im.dataset.key !== key) { im.dataset.key = key; im.src = this._art(`item-${im.dataset.item}-${key}.png`); }
+      Object.assign(im.style, { left: I.x * s + 'px', top: I.y * s + 'px', width: I.w * s + 'px', height: I.h * s + 'px' });
+      im.hidden = false;
     }
     // the offers: on the counter's front, under him
     const cx = x0 + g.tx * s;
@@ -429,9 +432,9 @@ const Store = {
       }
       // nothing on the counter stands under a sign (a short window puts them beside him)
       const ob = offers.getBoundingClientRect();
-      for (const im of el.querySelectorAll('.mkProp')) {
-        const l = parseFloat(im.style.left), t = parseFloat(im.style.top);
-        im.hidden = l < ob.right && l + parseFloat(im.style.width) > ob.left && t < ob.bottom && t + parseFloat(im.style.height) > ob.top;
+      for (const im of el.querySelectorAll('.mkItem')) {
+        const b = im.getBoundingClientRect();
+        im.hidden = b.left < ob.right && b.right > ob.left && b.top < ob.bottom && b.bottom > ob.top;
       }
     }
     // the case
@@ -978,8 +981,7 @@ Store.CSS = `
 #scrStore .mkPlinth { position: absolute; left: 0; right: 0; bottom: 0; z-index: 1; display: block; pointer-events: none;
   background-repeat: repeat-x; box-shadow: 0 -3px 6px rgba(0,0,0,0.45); }
 #scrStore .mkPlinth.px { image-rendering: pixelated; }
-#scrStore .mkProp { position: absolute; z-index: 1; display: block; pointer-events: none; image-rendering: pixelated; filter: drop-shadow(0 2px 1px rgba(0,0,0,0.5)); }
-#scrStore .mkProp[hidden] { display: none; }
+#scrStore .mkScene .mkItem[hidden] { display: none; }
 #scrStore .mkFire { position: absolute; display: block; background-repeat: no-repeat; background-position: 0 0; }
 #scrStore .mkScene.px .mkFire { image-rendering: pixelated; }
 #scrStore .mkFire.tall { animation: mkFire7 760ms steps(7, jump-none) infinite; }
