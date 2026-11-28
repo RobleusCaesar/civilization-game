@@ -375,10 +375,10 @@ const SettingsPage = {
        never the pause over a game, never the journey's title) */
     if (window.Gold && Gold.on()) {
       h += this.card('Your Purse',
-        this.row('Gold', `Earned by finishing games: one for every ${CFG.GOLD.RATE} points. Spend it on cards at the Trader.`,
+        this.row('Gold', `Earned by finishing games: one for every ${CFG.GOLD.RATE} points. Spend it on cards, or sell yours, at the Marketplace.`,
           `<span class="sxGold">${Gold.mark(22)}<b>${Gold.fmt(Gold.balance())}</b></span>`) +
         (!this.inGame && window.Store && Store.allowed()
-          ? this.row('The Trader', 'Every card, for gold.', '<button class="sxBtn" type="button" data-act="store">Open the store</button>') : ''));
+          ? this.row('The Marketplace', 'Buy and sell cards, and see your deck.', '<button class="sxBtn" type="button" data-act="store">Open the Marketplace</button>') : ''));
     }
     h += this.card('Help & Tips',
       this.row('Unit tips', 'The how-to text on a selected unit’s panel.', this.toggle('unithelp', !(typeof UI !== 'undefined' && UI.helpHidden), 'Show unit tips')));

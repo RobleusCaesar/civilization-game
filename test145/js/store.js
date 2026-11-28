@@ -1,38 +1,71 @@
 'use strict';
-/* THE CARD STORE (#scrStore; js/gold.js, migration 0019; tests/gold.mjs —
-   operator, build 223: "a trader's stall (warm lamplight, wares, purse
-   always visible)… every catalog card listed with price, grouped by tier…
-   tap card → enlarge, tap to flip → BUY… confirm before purchase over ~200
-   gold… coins fly purse→card, card flies into deck… not enough gold: price
-   in red with 'X more gold needed'; never a dead button… main menu only —
-   never in game").
-   - THE MAIN MENU'S ALONE (Store.allowed): opened from the title or from
-     the title's Settings, never over a game (the pause is the settings page
-     too — its purse card offers no door), never on the journey's title (it
-     keeps the deck's collection away as well). Screens.show('store') asks
-     the same question and shows the title instead.
-   - THE STALL IS THE PAINTING (assets/ui/store/stall-{tall,wide}, PixelLab,
-     Scale2x'd like the night) under the settings page's carved frame: the
-     purse in a plate at its head (it never scrolls away), the wares below
-     on one shelf a tier, cheapest first, every card of the catalog with its
-     own price. A card short of the purse wears its price red and how much
-     more is needed.
-   - THE CLOSER LOOK: a tap holds the card up (Deck.lookFit, the size its
-     back reads at), a tap on it turns it over, BUY under it. Over
-     CFG.GOLD.CONFIRM_OVER the first tap only arms it ("Tap again to buy",
-     and a second tap inside 400 ms is a double-tap, not a decision — the
-     game's two-tap rule). Short of gold the button still answers: it shakes
-     and says how much more, never a dead button.
-   - THE PURCHASE is Gold.buy's (one transaction on the record); the coins
-     and the flight are its picture, played after the bookkeeping. */
+/* THE MARKETPLACE (#scrStore; js/gold.js, migrations 0019 + 0020;
+   tests/gold.mjs — operator, build 225: "a unified 'Marketplace'; you see
+   the shop keeper and he has some buttons available… then you click the
+   button you want, and then… the black rectangle and either the cards you
+   want to buy or the cards you own… Something integrated where the cards
+   feel more like part of the world… the ability to Sell… Sell should go for
+   20% less than the buy rate… devolve the technology of the shop keeper to
+   the second age… the hut plus the guy with the two beard braids… we don't
+   need the cards to have different text appearing next to the cards… when
+   you click they get bigger and flip around so you can read the back…
+   you see the front for half a second and then it flips… take up the space
+   over the deck… have the shopkeeper comment on the card"; then: "make him
+   almost twice as big so he fits the space better… now there's only one
+   button for the shopkeeper, not 2").
+   - THE HALL: a timber trading hut of the second age (assets/ui/store/hut-
+     {wide,tall}, PixelLab, Scale2x'd like the night; the masters in
+     assets/masters/store/), the trader standing BEHIND its counter — his
+     picture (assets/ui/store/trader.png, 256px drawn at the hut's own
+     density, Scale2x'd with it) laid between the painting and a copy of the
+     painting cut to the counter, so the counter hides his legs. Store.layout
+     places the hall for the window: a portrait window wears the tall hut, a
+     landscape one the wide; the hall COVERS the window and the trader is
+     always in view (GEO: each painting's counter line and his place).
+   - THE THREE OFFERS (the landing): Buy, Sell and Your Deck, signs on the
+     counter's front; his speech bubble greets the chief by name.
+   - THE CASE: the album's black panel in the settings page's carved gold
+     rim, on the counter (a phone) or beside him (a wide window): the three
+     modes as tabs, the five tiers as tabs that jump the shelf and light the
+     tier in view, then every card of the mode at whole device pixels —
+     BUY every card of the catalog with its price (short of the purse: red,
+     and how much more), SELL every card held with what the trader pays and
+     how many are held, DECK every card, the ones not found yet dark.
+   - A CARD HELD UP: a tap lifts it over the case (Deck.lookFit), face up,
+     and half a second later it turns to its back (FLIP_MS; reduced motion:
+     its back at once); a tap on it turns it again. Under it BUY or SELL and
+     Put back; the trader says something about it. Over CFG.GOLD.CONFIRM_OVER
+     — and for the last copy a deck holds — the first tap only arms it, and
+     a second tap inside 400 ms is a double-tap, not a decision. Short of
+     gold the button still answers: it shakes and says how much more.
+   - THE MAIN MENU'S ALONE (Store.allowed): opened from the title or the
+     title's Settings, never over a game, never on the journey's title.
+   - THE PURCHASE and THE SALE are Gold.buy's and Gold.sell's (one
+     transaction on the record each); the coins and the card's flight are
+     their picture, played after the bookkeeping. */
 const Store = {
   el: null,
   _from: 'title',
+  _mode: 'land',      // 'land' | 'buy' | 'sell' | 'own'
   _id: null,          // the card held up
-  _armedAt: 0,        // when a dear purchase was armed (0: not armed)
-  _anim: false,       // a purchase is being shown
+  _armedAt: 0,        // when a deal was armed (0: not armed)
+  _anim: false,       // a deal is being shown
   _shown: 0,          // the purse as the screen last painted it
+  _key: '',           // the painting worn ('wide' | 'tall')
+  _flipT: 0,
   CONFIRM_GAP_MS: 400,
+  FLIP_MS: 500,
+  NAME: 'Old Bran',
+  /* the paintings' own geometry, in MASTER pixels: the counter's top edge
+     (`top`), the foot of its front lip (`front`), where the trader stands
+     (`tx`, his middle). TR is his picture: 256px square at the hut's own
+     density, his feet on row `foot`, his crown on row `head`, half his
+     width `half`. */
+  GEO: {
+    wide: { w: 688, h: 384, top: 280, front: 326, tx: 250 },
+    tall: { w: 384, h: 688, top: 457, front: 507, tx: 178 },
+  },
+  TR: { size: 256, foot: 208, head: 15, half: 106, face: 46 },
 
   allowed() {
     if (!(window.Gold && Gold.on()) || typeof Screens === 'undefined') return false;
@@ -42,16 +75,25 @@ const Store = {
     if (cur === 'title' || cur === 'store') return true;
     return cur === 'settings' && !(window.SettingsPage && SettingsPage.inGame);
   },
-  open(from) {
+  open(from, mode) {
     if (!this.allowed()) return false;
     this._from = from === 'settings' ? 'settings' : 'title';
+    this._mode = ['buy', 'sell', 'own'].includes(mode) ? mode : 'land';
     Screens.show('store');
     return Screens.current === 'store';
   },
+  // leaves the Marketplace (to the title, or the Settings it was opened from)
   back() {
     this.closeLook(true);
     if (window.Gold) Gold.stop();
     Screens.show(this._from === 'settings' ? 'settings' : 'title');
+  },
+  // one step back: a card held is put back, a mode returns to the offers, the offers leave
+  step() {
+    if (this._anim) return;
+    if (this._id) return this.closeLook(false);
+    if (this._mode !== 'land') return this.setMode('land');
+    this.back();
   },
 
   /* ---------------- the screen ---------------- */
@@ -62,60 +104,78 @@ const Store = {
     scr.className = 'screen';
     scr.id = 'scrStore';
     const C = window.SettingsPage && SettingsPage.cornerSvg ? SettingsPage : null;
-    const v = (typeof CFG !== 'undefined' && CFG.ART_V) || 1, A = n => `assets/ui/store/${n}?v=${v}`;
+    const deck = this._deckSvg('stModeI');
     scr.innerHTML =
-      '<picture class="stBg" aria-hidden="true">' +
-        `<source srcset="${A('stall-wide.webp')}" type="image/webp" media="(min-aspect-ratio: 4/3)">` +
-        `<source srcset="${A('stall-wide.jpg')}" type="image/jpeg" media="(min-aspect-ratio: 4/3)">` +
-        `<source srcset="${A('stall-tall.webp')}" type="image/webp">` +
-        `<img src="${A('stall-tall.jpg')}" alt="" decoding="async">` +
-      '</picture><i class="stShade" aria-hidden="true"></i>' +
+      '<div class="mkScene" aria-hidden="true">' +
+        '<img class="mkBg" alt="" decoding="async">' +
+        `<img class="mkTrader" alt="" decoding="async" src="${this._art('trader.png')}">` +
+        '<img class="mkBg mkOver" alt="" decoding="async">' +
+        '<i class="mkExt"></i>' +
+      '</div>' +
+      '<i class="mkSb" aria-hidden="true"></i>' +
       '<header class="stHead">' +
-        '<button class="stBack" type="button" data-act="back" aria-label="Back"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M10.5 2.5 5 8l5.5 5.5" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="square"/></svg></button>' +
-        '<div class="stTitle"><h2>The Trader</h2><small>Cards for gold</small></div>' +
-        `<button class="stDeck" type="button" data-act="deck" aria-label="Your cards">${this._deckSvg()}<b class="stDeckN">0</b></button>` +
-      '</header>' +
-      '<div class="stFrame">' +
-        (C ? [['tl', 0, 0], ['tr', 1, 0], ['bl', 0, 1], ['br', 1, 1]].map(([c, fx, fy]) => `<i class="stC ${c}">${C.cornerSvg('stc' + c, fx, fy)}</i>`).join('') : '') +
+        '<button class="stBack" type="button" data-act="step" aria-label="Back"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M10.5 2.5 5 8l5.5 5.5" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="square"/></svg></button>' +
+        '<div class="stTitle"><h2>Marketplace</h2><small class="stSub">The trader’s hall</small></div>' +
         '<div class="stPurse" role="status" aria-live="polite">' +
           `<img class="stPurseImg" src="${window.Gold ? Gold.art('purse') : ''}" alt="" onerror="this.remove()">` +
-          '<div class="stPurseT"><small>Your purse</small><b><span class="stGold">0</span> <em>gold</em></b></div>' +
-          `<p class="stPurseHow">Finish a game to earn gold: one for every ${(typeof CFG !== 'undefined' && CFG.GOLD) ? CFG.GOLD.RATE : 200} points.</p>` +
+          '<b><span class="stGold">0</span></b><span class="stPurseW">gold</span></div>' +
+      '</header>' +
+      '<div class="mkSay" role="status" aria-live="polite"><b class="mkWho"></b><span class="mkSayT"></span></div>' +
+      '<div class="mkOffers">' +
+        `<button class="mkOffer lit" type="button" data-act="mode" data-mode="buy"><i class="mkOi">${window.Gold ? Gold.mark(28) : ''}</i><span><b>Buy</b><small>Cards for gold</small></span></button>` +
+        `<button class="mkOffer" type="button" data-act="mode" data-mode="sell"><i class="mkOi"><img src="${window.Gold ? Gold.art('purse') : ''}" alt=""></i><span><b>Sell</b><small>Gold for your cards</small></span></button>` +
+        `<button class="mkOffer" type="button" data-act="mode" data-mode="own"><i class="mkOi">${this._deckSvg('mkDeckI')}</i><span><b>Your Deck</b><small class="mkFound"></small></span></button>` +
+      '</div>' +
+      '<div class="stCase" hidden>' +
+        (C ? [['tl', 0, 0], ['tr', 1, 0], ['bl', 0, 1], ['br', 1, 1]].map(([c, fx, fy]) => `<i class="stC ${c}">${C.cornerSvg('stc' + c, fx, fy)}</i>`).join('') : '') +
+        '<div class="stModes" role="tablist">' +
+          `<button class="stMode" type="button" role="tab" data-act="mode" data-mode="buy">${window.Gold ? Gold.mark(16) : ''}<span>Buy</span></button>` +
+          `<button class="stMode" type="button" role="tab" data-act="mode" data-mode="sell"><img src="${window.Gold ? Gold.art('purse') : ''}" alt=""><span>Sell</span></button>` +
+          `<button class="stMode" type="button" role="tab" data-act="mode" data-mode="own">${deck}<span>Deck</span></button>` +
         '</div>' +
-        '<div class="stPane"><div class="stShelves"></div></div>' +
+        '<div class="stTiers"></div>' +
+        '<div class="stPane"><div class="stShelves"></div><p class="stEmpty" hidden></p>' +
+          '<button class="stHow" type="button" data-act="intro" hidden>How cards work</button></div>' +
       '</div>' +
       '<div class="stLook" hidden>' +
-        `<button class="stX" type="button" data-act="unlook" aria-label="Close">${this._closeSvg()}</button>` +
         '<div class="stLookCard" data-act="flip"></div>' +
-        '<p class="stCap">Tap the card to turn it over</p>' +
         '<div class="stDeal">' +
-          '<button class="stBuy" type="button" data-act="buy"><span class="stBuyL">Buy</span><span class="stBuyP"></span></button>' +
+          '<div class="stDealRow">' +
+            '<button class="stBuy" type="button" data-act="deal"><span class="stBuyL">Buy</span><span class="stBuyP"></span></button>' +
+            '<button class="stPut" type="button" data-act="unlook">Put back</button>' +
+          '</div>' +
           '<p class="stMsg" role="status" aria-live="polite"></p>' +
           '<p class="stOwn"></p>' +
         '</div>' +
       '</div>';
     document.getElementById('shell').appendChild(scr);
     scr.addEventListener('click', e => this._click(e));
+    scr.querySelector('.stPane').addEventListener('scroll', () => this._litTier(), { passive: true });
+    for (const img of scr.querySelectorAll('.mkBg')) img.addEventListener('error', () => {
+      // a browser without webp, or a missing file: the png beside it
+      if (/\.webp/.test(img.src)) img.src = img.src.replace('.webp', '.png');
+    });
     document.addEventListener('keydown', e => {
       if (e.key !== 'Escape' || typeof Screens === 'undefined' || Screens.current !== 'store') return;
+      if (window.CardIntro && CardIntro.open) return;   // the announcement closes itself
       e.preventDefault();
-      if (this._id) this.closeLook(false); else this.back();
+      this.step();
     });
     let rt = 0;
     window.addEventListener('resize', () => {
       clearTimeout(rt);
-      rt = setTimeout(() => { if (Screens.current === 'store' && !this._anim) this.render(); }, 160);
+      rt = setTimeout(() => { if (Screens.current === 'store' && !this._anim) { this.layout(); this.render(); this._placeSay(); if (this._id) this._sizeLook(); } }, 160);
     });
     if (window.Deck && Deck.onChange) Deck.onChange(() => {
-      if (typeof Screens !== 'undefined' && Screens.current === 'store' && !this._anim) this.paint();
+      if (typeof Screens === 'undefined' || Screens.current !== 'store' || this._anim) return;
+      if (this._mode === 'sell' || this._mode === 'own') this.render(); else this.paint();
     });
     this.el = scr;
     return scr;
   },
-  _deckSvg() { return (window.DeckUI && DeckUI.deckIcon) ? DeckUI.deckIcon('stDeckI') : ''; },
-  _closeSvg() {
-    return '<svg viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M4 4l8 8M12 4l-8 8"/></svg>';
-  },
+  _art(n) { return `assets/ui/store/${n}?v=${(typeof CFG !== 'undefined' && CFG.ART_V) || 1}`; },
+  _deckSvg(cls) { return (window.DeckUI && DeckUI.deckIcon) ? DeckUI.deckIcon(cls) : ''; },
+  _esc(s) { return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); },
 
   // Screens.show('store') calls in
   onShow() {
@@ -124,117 +184,436 @@ const Store = {
     if (window.Gold) Gold.testLink();
     this.closeLook(true);
     this._shown = Gold.balance();
-    this.render();
+    this._applyMode(true);
     Deck.track('store', { ev: 'open', gold: Gold.balance(), from: this._from });
-    // the record's purse and price list, asked as the stall opens
+    // the record's purse and price list, asked as the hall opens
     if (Gold.mode() === 'cloud') {
       Deck.sync('store').then(() => {
-        if (Screens.current === 'store' && !this._anim) { this._shown = Gold.balance(); this.paint(); }
+        if (Screens.current === 'store' && !this._anim) { this._shown = Gold.balance(); this.render(); }
       }).catch(() => {});
     }
-    const pane = this.el.querySelector('.stPane');
-    if (pane) pane.scrollTop = 0;
   },
 
-  /* ---------------- the wares ---------------- */
-  // the card's size on the shelf: whole device pixels (Deck.fit), as many
-  // to a row as the frame holds at a readable size
+  /* ---------------- the modes ---------------- */
+  setMode(m) {
+    if (this._anim) return;
+    m = ['buy', 'sell', 'own'].includes(m) ? m : 'land';
+    if (m === this._mode && !this._id) return;
+    this.closeLook(true);
+    this._mode = m;
+    this._applyMode(false);
+    this._cue('ok');
+    if (m !== 'land') Deck.track('store', { ev: 'mode', mode: m, gold: Gold.balance() });
+  },
+  _applyMode(first) {
+    const m = this._mode, el = this.el;
+    el.dataset.mode = m;
+    el.querySelector('.stSub').textContent = { land: 'The trader’s hall', buy: 'Buying', sell: 'Selling', own: 'Your deck' }[m];
+    el.querySelector('.stCase').hidden = m === 'land';
+    el.querySelector('.mkOffers').hidden = m !== 'land';
+    for (const b of el.querySelectorAll('.stMode')) {
+      const on = b.dataset.mode === m;
+      b.classList.toggle('on', on);
+      b.setAttribute('aria-selected', on ? 'true' : 'false');
+    }
+    // the case is placed before its cards are sized to it, the bubble after both
+    this.layout();
+    const pane = el.querySelector('.stPane');
+    if (pane) pane.scrollTop = 0;
+    this.render();
+    this.say(this._line(m));
+    this._litTier();
+    if (!first && !Gold.reduced()) {
+      const tgt = m === 'land' ? el.querySelector('.mkOffers') : el.querySelector('.stCase');
+      try { tgt.animate([{ opacity: 0, transform: 'translateY(14px)' }, { opacity: 1, transform: 'none' }], { duration: 220, easing: 'ease-out' }); } catch (e) {}
+    }
+  },
+
+  /* ---------------- the trader's words ---------------- */
+  _chief() {
+    let n = '';
+    try { if (typeof Prologue !== 'undefined' && Prologue.named) n = Prologue.named(); else n = localStorage.getItem('neo-chief') || ''; } catch (e) {}
+    n = String(n || '').replace(/\s+/g, ' ').trim().replace(/^chief\s+/i, '').slice(0, 24).trim();
+    return n ? 'Chief ' + this._esc(n) : 'Chief';
+  },
+  _found() { return Deck.CATALOG.filter(c => Deck.count(c.id) > 0).length; },
+  _line(kind, id, x) {
+    const c = id ? Deck.card(id) : null, nm = c ? this._esc(c.name) : '';
+    const g = n => Gold.fmt(n);
+    switch (kind) {
+      case 'land': return `Welcome, ${this._chief()}! Come to <em>buy</em>, to <em>sell</em>, or to look over <em>your deck</em>?`;
+      case 'buy': return 'Take your time. Pick up anything that catches your eye.';
+      case 'sell': return this._held().length ? 'Show me what you have. I pay four fifths of my own price.' : 'You hold no cards to sell, Chief. Win a few games first.';
+      case 'own': {
+        const f = this._found(), all = Deck.CATALOG.length;
+        return f >= all ? 'Every card in the land! A collection for the songs.' : `${f} of ${all} found. ${all - f} more out there to find.`;
+      }
+      case 'holdbuy': {
+        const p = g(Deck.price(id));
+        if (id === 'dragonfire') return `Dragonfire! Handle it with care. <em>${p} gold.</em>`;
+        return ({
+          stone: `${nm}. A humble card, only <em>${p} gold.</em>`,
+          bronze: `${nm}, a sound choice. <em>${p} gold.</em>`,
+          iron: `${nm}! Fine work, and cheap at <em>${p} gold.</em>`,
+          imperial: `Ah, ${nm}. Fit for an emperor: <em>${p} gold.</em>`,
+          enlight: `${nm}… I keep that one close. <em>${p} gold.</em>`,
+        })[c.tier] || `${nm}. <em>${p} gold.</em>`;
+      }
+      case 'holdsell': return `${nm}? I’ll give you <em>${g(Gold.sellPrice(id))} gold</em> for it.`;
+      case 'holdown': { const n = Deck.count(id); return n === 1 ? `${nm}. You hold one.` : `${nm}. You hold ${n}.`; }
+      case 'unknown': return 'Not found yet. Win it in battle, or buy one from me.';
+      case 'short': return `${g(x)} more gold, Chief. Win a few more fights.`;
+      case 'bought': return `${nm} is yours. A fine trade!`;
+      case 'sold': return `${g(x)} gold for your ${nm}. A pleasure, Chief.`;
+      default: return '';
+    }
+  },
+  say(html) {
+    const b = this.el && this.el.querySelector('.mkSay');
+    if (!b) return;
+    b.querySelector('.mkWho').textContent = this.NAME;
+    b.querySelector('.mkSayT').innerHTML = html || '';
+    b.hidden = !html;
+    this._placeSay();
+  },
+
+  /* ---------------- the hall, laid out for the window ---------------- */
+  _vp() {
+    const de = document.documentElement;
+    return { W: de.clientWidth || innerWidth || 390, H: de.clientHeight || innerHeight || 844 };
+  },
+  layout() {
+    const el = this.el;
+    if (!el) return;
+    const { W, H } = this._vp(), wide = W / H >= 4 / 3, key = wide ? 'wide' : 'tall', g = this.GEO[key], T = this.TR;
+    if (this._key !== key) {
+      this._key = key;
+      for (const img of el.querySelectorAll('.mkBg')) img.src = this._art(`hut-${key}.webp`);
+    }
+    const head = el.querySelector('.stHead').getBoundingClientRect().bottom;
+    const sb = el.querySelector('.mkSb').offsetHeight || 0;
+    const browse = this._mode !== 'land';
+    const offers = el.querySelector('.mkOffers'), box = el.querySelector('.stCase');
+    let s, x0, y0, cb = null;
+    offers.classList.toggle('col', !wide);
+    offers.classList.remove('side');
+    if (!wide) {
+      if (!browse) {
+        s = Math.max(W / g.w, H / g.h);
+        x0 = (W - g.w * s) / 2;
+        y0 = (H - g.h * s) / 2;
+        const oh = offers.offsetHeight || 188;
+        const over = y0 + (g.front + 8) * s + oh + 14 + sb - H;
+        if (over > 0) y0 -= over;
+      } else {
+        s = W / g.w;
+        x0 = 0;
+        const C = Math.round(Math.min(H - 300, Math.max(H * 0.37, head + 10 + (T.foot - T.head + 4) * s)));
+        y0 = C - g.top * s;
+        cb = { left: 0, right: 0, top: C, bottom: 0 };
+      }
+    } else {
+      s = Math.max(W / g.w, H / g.h);
+      y0 = (H - g.h * s) / 2;
+      if (!browse) {
+        x0 = (W - g.w * s) / 2;
+        const oh = offers.offsetHeight || 66, top = y0 + (g.front + 10) * s;
+        const room = H - sb - 12 - (top + oh), headTop = y0 + (g.top - T.foot + T.head) * s;
+        if (room < 0) {
+          const lift = Math.min(-room, Math.max(0, headTop - head - 4));
+          y0 -= lift;
+          if (room + lift < 0) offers.classList.add('side');   // a short window: the offers stand beside him
+        }
+      } else {
+        const right = W >= 900 ? 24 : 12, cw = Math.round(Math.min(640, Math.max(360, W * 0.46)));
+        cb = { left: W - cw - right, right, top: head + 6, bottom: (W >= 900 ? 24 : 10) + sb };
+        x0 = Math.min(0, Math.max(W - g.w * s, cb.left / 2 - g.tx * s));
+      }
+      if (x0 === undefined) x0 = (W - g.w * s) / 2;
+    }
+    this._geo = { s, x0, y0, g, W, H, head, sb, wide, cb };
+    // the hall
+    const sc = el.querySelector('.mkScene');
+    Object.assign(sc.style, { left: x0 + 'px', top: y0 + 'px', width: g.w * s + 'px', height: g.h * s + 'px' });
+    const dpr = Math.max(1, devicePixelRatio || 1), up = g.w * s * dpr >= g.w * 2 - 0.5;   // the file is twice the master
+    sc.classList.toggle('px', up);
+    const tr = el.querySelector('.mkTrader');
+    Object.assign(tr.style, { left: (g.tx - T.size / 2) * s + 'px', top: (g.top - T.foot) * s + 'px', width: T.size * s + 'px', height: T.size * s + 'px' });
+    el.querySelector('.mkOver').style.clipPath = `inset(${(g.top / g.h * 100).toFixed(3)}% 0 0 0)`;
+    const ext = el.querySelector('.mkExt'), bottom = y0 + g.h * s;
+    ext.style.top = g.h * s - 2 + 'px';
+    ext.style.height = Math.max(0, H - bottom + 4) + 'px';
+    // the offers: on the counter's front, under him
+    const cx = x0 + g.tx * s;
+    if (!browse) {
+      if (offers.classList.contains('side')) {
+        const ow = offers.offsetWidth || 224, oh = offers.offsetHeight || 172;
+        Object.assign(offers.style, { left: Math.min(W - ow - 12, cx + T.half * s + 16) + 'px', top: Math.max(head + 6, (head + H - sb - oh) / 2) + 'px' });
+      } else if (!wide) {
+        Object.assign(offers.style, { left: '0px', top: y0 + (g.front + 8) * s + 'px' });
+      } else {
+        const ow = offers.offsetWidth || 700;
+        Object.assign(offers.style, { left: Math.max(12, Math.min(W - ow - 12, cx - ow / 2)) + 'px', top: y0 + (g.front + 10) * s + 'px' });
+      }
+    }
+    // the case
+    if (cb) {
+      Object.assign(box.style, { left: cb.left + 'px', right: cb.right + 'px', top: cb.top + 'px', bottom: cb.bottom + 'px' });
+      box.classList.toggle('side', wide);
+      box.classList.toggle('roomy', W - cb.left - cb.right >= 520);
+    }
+    this._placeSay();
+    this._placeLook();
+  },
+  // the bubble at his head: above it where there is room, else beside it, never over the offers or the case
+  _placeSay() {
+    const el = this.el, G = this._geo;
+    if (!el || !G) return;
+    const b = el.querySelector('.mkSay');
+    if (b.hidden) return;
+    const { s, x0, y0, g, W, H, head, wide, cb } = G, T = this.TR;
+    const cx = x0 + g.tx * s, headTop = y0 + (g.top - T.foot + T.head) * s, face = T.face * s;
+    const limR = cb && wide ? cb.left - 10 : W - 10;
+    const avoid = [];
+    const o = el.querySelector('.mkOffers');
+    if (!o.hidden) avoid.push(o.getBoundingClientRect());
+    if (cb) avoid.push({ left: cb.left, top: cb.top, right: W - cb.right, bottom: H - cb.bottom });
+    const hits = r => avoid.some(a => r.left < a.right && r.right > a.left && r.top < a.bottom && r.bottom > a.top);
+    const bw0 = Math.round(Math.min(wide ? 320 : 250, Math.max(160, (limR - 10) * 0.62)));
+    const tries = [];
+    // above his head, leaning right
+    tries.push(bw => ({ left: Math.max(10, Math.min(limR - bw, cx - bw * 0.28)), topOf: bh => headTop - bh - 12, tail: 'b' }));
+    // beside him, right then left
+    tries.push(bw => ({ left: cx + face + 6, topOf: () => Math.max(head + 6, headTop - 4), tail: 'l' }));
+    tries.push(bw => ({ left: cx - face - 6 - bw, topOf: () => Math.max(head + 6, headTop - 4), tail: 'r' }));
+    for (const bw of [bw0, Math.max(150, Math.round(bw0 * 0.8)), 150, 132, 118]) {
+      b.style.width = bw + 'px';
+      b.classList.toggle('narrow', bw < 150);
+      const bh = b.offsetHeight;
+      for (const t of tries) {
+        const p = t(bw), top = p.topOf(bh), r = { left: p.left, top, right: p.left + bw, bottom: top + bh };
+        if (r.left < 8 || r.right > limR + 2 || r.top < head + 4 || r.bottom > H - 8 || hits(r)) continue;
+        return this._putSay(b, r, p.tail, cx, headTop);
+      }
+    }
+    // nothing fits cleanly: above him, clamped under the header
+    b.style.width = bw0 + 'px';
+    b.classList.remove('narrow');
+    const bh = b.offsetHeight, left = Math.max(10, Math.min(limR - bw0, cx - bw0 * 0.28));
+    this._putSay(b, { left, top: Math.max(head + 4, headTop - bh - 12) }, 'b', cx, headTop);
+  },
+  _putSay(b, r, tail, cx, headTop) {
+    b.style.left = Math.round(r.left) + 'px';
+    b.style.top = Math.round(r.top) + 'px';
+    b.dataset.tail = tail;
+    const w = b.offsetWidth, h = b.offsetHeight;
+    b.style.setProperty('--tx', Math.max(16, Math.min(w - 28, cx - r.left - 6)) + 'px');
+    b.style.setProperty('--ty', Math.max(10, Math.min(h - 26, headTop + 30 - r.top)) + 'px');
+  },
+
+  /* ---------------- the case ---------------- */
+  // the card's size on the shelf: whole device pixels (Deck.fit), as many to a row as the case holds at a readable size
   _grid() {
     const pane = this.el.querySelector('.stShelves');
     const avail = Math.max(200, (pane && pane.clientWidth) || 300);
     for (const cols of [6, 5, 4, 3, 2]) {
-      const gap = cols >= 3 ? 3 : 8, f = Deck.fit((avail - gap * (cols - 1)) / cols);
+      const gap = cols >= 3 ? 3 : 4, f = Deck.fit((avail - gap * (cols - 1)) / cols);
       if (f.w >= 108 && f.w * cols + gap * (cols - 1) <= avail + 0.01) return { cols, w: f.w };
     }
-    return { cols: 2, w: Deck.fit((avail - 8) / 2).w };
+    return { cols: 2, w: Deck.fit((avail - 4) / 2).w };
+  },
+  _held() { return Deck.CATALOG.filter(c => Deck.count(c.id) > 0); },
+  _cards(t) {
+    const all = Deck.CATALOG.filter(c => c.tier === t.k && Deck.price(c.id) > 0);
+    return this._mode === 'sell' ? all.filter(c => Deck.count(c.id) > 0) : all;
   },
   render() {
     if (!this.el) return;
-    const host = this.el.querySelector('.stShelves');
-    const g = this._grid(), esc = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    const m = this._mode;
+    this.el.querySelector('.mkFound').textContent = `${this._found()} of ${Deck.CATALOG.length} cards found`;
+    const host = this.el.querySelector('.stShelves'), tiers = this.el.querySelector('.stTiers');
+    const empty = this.el.querySelector('.stEmpty');
+    host.textContent = '';
+    tiers.textContent = '';
+    if (m === 'land') { this.paint(); return; }
+    const pane = this.el.querySelector('.stPane'), keep = pane.scrollTop;
+    const g = this._grid();
     host.style.setProperty('--cols', g.cols);
     host.style.setProperty('--cw', g.w + 'px');
-    host.textContent = '';
+    let any = 0;
     for (const t of Deck.TIERS) {
-      const cards = Deck.CATALOG.filter(c => c.tier === t.k && Deck.price(c.id) > 0);
+      const cards = this._cards(t), all = Deck.CATALOG.filter(c => c.tier === t.k);
+      const ps = all.map(c => Deck.price(c.id)).filter(p => p > 0), lo = ps.length ? Math.min(...ps) : 0;
+      const sub = m === 'buy' ? `${Gold.mark(11)}${Gold.fmt(lo)}` : m === 'sell' ? `${Gold.mark(11)}${Gold.fmt(Math.floor(lo * ((CFG.GOLD && CFG.GOLD.SELL) || 0.8) + 0.5))}`
+        : `${all.filter(c => Deck.count(c.id) > 0).length}/${all.length}`;
+      const tb = document.createElement('button');
+      tb.type = 'button';
+      tb.className = 'stTier' + (cards.length ? '' : ' none');
+      tb.dataset.act = 'tier';
+      tb.dataset.tier = t.k;
+      tb.style.setProperty('--tc', t.col);
+      tb.innerHTML = `<span class="stTn">${window.DeckUI && DeckUI.gemIcon ? DeckUI.gemIcon('stGem') : ''}${this._esc(t.name)}</span><em>${sub}</em>`;
+      tb.setAttribute('aria-label', `${t.name}: ${cards.length} ${cards.length === 1 ? 'card' : 'cards'}`);
+      tiers.appendChild(tb);
       if (!cards.length) continue;
-      const ps = cards.map(c => Deck.price(c.id)), lo = Math.min(...ps), hi = Math.max(...ps);
+      any += cards.length;
       const sec = document.createElement('section');
       sec.className = 'stShelf';
       sec.dataset.tier = t.k;
       sec.style.setProperty('--tc', t.col);
-      sec.innerHTML =
-        `<h3 class="stShelfH">${window.DeckUI && DeckUI.gemIcon ? DeckUI.gemIcon('stGem') : ''}` +
-          `<span class="stTn">${esc(t.name)}</span><small>${esc(t.rarity)}</small>` +
-          `<span class="stEach">${Gold.mark(16)}<b>${Gold.fmt(lo)}${hi > lo ? '–' + Gold.fmt(hi) : ''}</b></span></h3>` +
-        '<div class="stWares"></div>';
+      sec.innerHTML = '<div class="stWares"></div>';
       const wares = sec.querySelector('.stWares');
       for (const c of cards) {
+        const n = Deck.count(c.id), unknown = m === 'own' && !n;
         const b = document.createElement('button');
         b.type = 'button';
-        b.className = 'stItem';
+        b.className = 'stItem' + (unknown ? ' unknown' : '');
         b.dataset.card = c.id;
         b.dataset.act = 'look';
-        b.appendChild(Deck.face(c.id, { w: g.w }));
-        b.insertAdjacentHTML('beforeend',
-          `<span class="stTag">${Gold.mark(15)}<b class="stP">${Gold.fmt(Deck.price(c.id))}</b><small class="stMore"></small></span>`);
+        b.appendChild(Deck.face(c.id, unknown ? { w: g.w, unknown: true } : { w: g.w }));
+        if (m === 'buy') b.insertAdjacentHTML('beforeend', `<span class="stTag">${Gold.mark(15)}<b class="stP"></b><small class="stMore"></small></span>`);
+        else if (m === 'sell') b.insertAdjacentHTML('beforeend', `<span class="stTag">${Gold.mark(15)}<b class="stP"></b><i class="stHave"></i></span>`);
+        else b.insertAdjacentHTML('beforeend', `<span class="stTag own"><i class="stHave"></i></span>`);
         wares.appendChild(b);
       }
       host.appendChild(sec);
     }
+    empty.hidden = !!any;
+    this.el.querySelector('.stHow').hidden = !(m === 'own' && window.CardIntro);
+    empty.textContent = any ? '' : (m === 'sell' ? 'Nothing to sell yet. Win games to earn cards.' : '');
     this.paint();
+    pane.scrollTop = keep;
+    this._litTier();
   },
-  // the numbers only: the purse, each card's price and count, what is short
+  // the numbers only: the purse, each card's price, what is short, how many are held
   paint() {
     if (!this.el) return;
     const gold = this._anim ? this._shown : Gold.balance();
     if (!this._anim) this._shown = gold;
     this.el.querySelector('.stGold').textContent = Gold.fmt(gold);
-    this.el.querySelector('.stDeckN').textContent = String(Deck.total());
+    this.el.querySelector('.mkFound').textContent = `${this._found()} of ${Deck.CATALOG.length} cards found`;
+    const m = this._mode;
     for (const b of this.el.querySelectorAll('.stItem')) {
-      const id = b.dataset.card, c = Deck.card(id), p = Deck.price(id), n = Deck.count(id), short = p > gold;
-      b.classList.toggle('short', short);
-      b.querySelector('.stP').textContent = Gold.fmt(p);
-      b.querySelector('.stMore').textContent = short ? Gold.fmt(p - gold) + ' more' : '';
-      b.setAttribute('aria-label', `${c.name}, ${Gold.fmt(p)} gold` + (short ? `, ${Gold.fmt(p - gold)} more gold needed` : '') + (n ? `, ${n} in your deck` : ''));
+      const id = b.dataset.card, c = Deck.card(id), n = Deck.count(id);
+      if (m === 'buy') {
+        const p = Deck.price(id), short = p > gold;
+        b.classList.toggle('short', short);
+        b.querySelector('.stP').textContent = Gold.fmt(p);
+        b.querySelector('.stMore').textContent = short ? Gold.fmt(p - gold) + ' more' : '';
+        b.setAttribute('aria-label', `${c.name}, ${Gold.fmt(p)} gold` + (short ? `, ${Gold.fmt(p - gold)} more gold needed` : ''));
+      } else if (m === 'sell') {
+        const p = Gold.sellPrice(id);
+        b.querySelector('.stP').textContent = Gold.fmt(p);
+        b.querySelector('.stHave').textContent = '×' + n;
+        b.setAttribute('aria-label', `${c.name}, sells for ${Gold.fmt(p)} gold, ${n} held`);
+      } else {
+        b.querySelector('.stHave').textContent = n ? (n === 1 ? 'One in your deck' : n + ' in your deck') : 'Not found yet';
+        b.setAttribute('aria-label', n ? `${c.name}, ${n} in your deck` : 'A card not found yet');
+      }
     }
     if (this._id) this._paintDeal();
   },
+  // the tier in view is the lit tab
+  _litTier() {
+    if (!this.el || this._mode === 'land') return;
+    const pane = this.el.querySelector('.stPane'), top = pane.getBoundingClientRect().top + 8;
+    let lit = null;
+    for (const sec of pane.querySelectorAll('.stShelf')) { if (sec.getBoundingClientRect().top <= top + 40 || !lit) lit = sec.dataset.tier; }
+    if (pane.scrollTop + pane.clientHeight >= pane.scrollHeight - 2) {
+      const last = [...pane.querySelectorAll('.stShelf')].pop();
+      if (last && last.getBoundingClientRect().top < pane.getBoundingClientRect().bottom - 60) lit = last.dataset.tier;
+    }
+    for (const t of this.el.querySelectorAll('.stTier')) t.classList.toggle('on', t.dataset.tier === lit);
+  },
+  jumpTier(k) {
+    const pane = this.el.querySelector('.stPane'), sec = pane.querySelector(`.stShelf[data-tier="${k}"]`);
+    if (!sec) return;
+    const y = sec.getBoundingClientRect().top - pane.getBoundingClientRect().top + pane.scrollTop - 2;
+    try { pane.scrollTo({ top: y, behavior: Gold.reduced() ? 'auto' : 'smooth' }); } catch (e) { pane.scrollTop = y; }
+    for (const t of this.el.querySelectorAll('.stTier')) t.classList.toggle('on', t.dataset.tier === k);
+  },
 
-  /* ---------------- the closer look ---------------- */
+  /* ---------------- a card held up ---------------- */
+  // where the held card may stand: over the case, rising a little above it on a phone
+  _lookBox() {
+    const G = this._geo;
+    if (!G || !G.cb) return null;
+    const { W, H, cb, head, wide, s, y0, g } = G, T = this.TR;
+    // on a phone it may rise over the counter, never over his face
+    const chin = y0 + (g.top - T.foot + T.head + 96) * s;
+    const rise = wide ? 0 : Math.max(0, Math.min(cb.top - head - 8, cb.top - chin - 6));
+    return { left: cb.left, right: cb.right, top: cb.top - rise, bottom: cb.bottom, w: W - cb.left - cb.right, h: H - cb.bottom - (cb.top - rise) };
+  },
+  // a short case (a phone on its side) stands the deal beside the card, not under it
+  _lookRow(B) { return !!B && B.h < 440 && B.w >= 360; },
+  _placeLook() {
+    const L = this.el && this.el.querySelector('.stLook'), B = this._lookBox();
+    if (!L || !B) return;
+    Object.assign(L.style, { left: B.left + 'px', right: B.right + 'px', top: B.top + 'px', bottom: B.bottom + 'px' });
+    L.classList.toggle('row', this._lookRow(B));
+  },
   lookRoom() {
-    const w = innerWidth, h = innerHeight;
-    // the deal under the card takes ~150px; the ✕ and the caption the rest
-    return Math.min(w - 40, 352, (h - 250) * Deck.W / Deck.H);
+    const B = this._lookBox();
+    if (!B) return 260;
+    if (this._lookRow(B)) return Math.min(B.w - 200, 352, (B.h - 20) * Deck.W / Deck.H);
+    return Math.min(B.w - 28, 352, (B.h - 118) * Deck.W / Deck.H);
+  },
+  /* the held card: as big as the room over the case allows, at whole device
+     pixels, its back's words at the size a closer look reads them (LOOK_TU) */
+  _lookFit() {
+    const w = Deck.fit(Math.max(120, this.lookRoom())).w;
+    return { w, tu: Math.max(w / Deck.W, Deck.LOOK_TU || 2) };
+  },
+  _sizeLook() {
+    const L = this.el.querySelector('.stLook'), f = L.querySelector('.ccard');
+    if (!f || !this._id) return;
+    const lf = this._lookFit();
+    const face = Deck.face(this._id, { w: lf.w, back: f.classList.contains('flip') });
+    f.replaceWith(face);
+    Deck.backText(face, lf.tu);
   },
   look(id, from) {
     if (!Deck.card(id) || this._anim) return;
+    if (this._mode === 'land') { this._mode = 'buy'; this._applyMode(true); }
+    const m = this._mode, n = Deck.count(id);
+    if (m === 'own' && !n) { this.say(this._line('unknown')); this._cue('no'); return; }
+    if (m === 'sell' && !n) return;
+    this._placeLook();
     const L = this.el.querySelector('.stLook'), host = L.querySelector('.stLookCard');
-    const lf = Deck.lookFit(Math.max(120, this.lookRoom())), calm = Gold.reduced();
-    const face = Deck.face(id, { w: lf.w });
+    const lf = this._lookFit(), calm = Gold.reduced();
+    const face = Deck.face(id, { w: lf.w, back: calm });
     host.innerHTML = '';
     host.appendChild(face);
     this._id = id;
     this._armedAt = 0;
     L.hidden = false;
+    this.el.querySelector('.stCase').classList.add('holding');
     Deck.backText(face, lf.tu);
     this._msg('');
     this._paintDeal();
+    this.say(this._line('hold' + m, id));
     this._cue('ok');
+    clearTimeout(this._flipT);
+    // face up for half a second, then it turns to its back
+    if (!calm) this._flipT = setTimeout(() => { if (this._id === id && face.isConnected) face.classList.add('flip'); }, this.FLIP_MS);
     if (calm || !from) return;
     const a = from.getBoundingClientRect(), b = face.getBoundingClientRect();
     const s = a.width / b.width, dx = a.left + a.width / 2 - (b.left + b.width / 2), dy = a.top + a.height / 2 - (b.top + b.height / 2);
     try {
       face.animate([{ transform: `translate(${dx}px, ${dy}px) scale(${s})` }, { transform: 'none' }], { duration: 320, easing: 'cubic-bezier(.3,1.32,.5,1)' });
-      L.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 170, easing: 'ease-out' });
+      L.querySelector('.stDeal').animate([{ opacity: 0 }, { opacity: 1 }], { duration: 260, easing: 'ease-out' });
     } catch (e) {}
   },
   closeLook(now) {
     const L = this.el && this.el.querySelector('.stLook');
+    const had = this._id;
     this._id = null;
     this._armedAt = 0;
+    clearTimeout(this._flipT);
     if (!L || L.hidden) return;
-    const done = () => { if (this._id) return; L.hidden = true; L.querySelector('.stLookCard').innerHTML = ''; };
+    const box = this.el.querySelector('.stCase');
+    const done = () => { if (this._id) return; L.hidden = true; L.querySelector('.stLookCard').innerHTML = ''; box.classList.remove('holding'); };
+    if (had && !now && this._mode !== 'land') this.say(this._line(this._mode));
     if (now || Gold.reduced()) { done(); return; }
     try { const a = L.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 150, easing: 'ease-in' }); a.onfinish = done; } catch (e) {}
     setTimeout(done, 240);
@@ -242,16 +621,31 @@ const Store = {
   _paintDeal() {
     const id = this._id;
     if (!id || !this.el) return;
-    const L = this.el.querySelector('.stLook'), btn = L.querySelector('.stBuy');
-    const p = Deck.price(id), gold = this._anim ? this._shown : Gold.balance(), short = p > gold, n = Deck.count(id);
-    const armed = !!this._armedAt;
-    btn.classList.toggle('short', short);
-    btn.classList.toggle('armed', armed && !short);
-    btn.querySelector('.stBuyL').textContent = this._anim ? 'Bought' : (armed && !short ? 'Tap again to buy' : 'Buy');
-    btn.querySelector('.stBuyP').innerHTML = `${Gold.mark(18)}<b>${Gold.fmt(p)}</b>`;
-    btn.setAttribute('aria-label', `Buy ${Deck.card(id).name} for ${Gold.fmt(p)} gold`);
-    L.querySelector('.stOwn').textContent = n ? (n === 1 ? 'One in your deck' : n + ' in your deck') : 'None in your deck yet';
-    if (short && !this._anim && !L.querySelector('.stMsg').textContent) this._msg(Gold.fmt(p - gold) + ' more gold needed', 'short');
+    const L = this.el.querySelector('.stLook'), btn = L.querySelector('.stBuy'), m = this._mode;
+    const gold = this._anim ? this._shown : Gold.balance(), n = Deck.count(id), armed = !!this._armedAt;
+    btn.hidden = m === 'own';
+    btn.classList.toggle('sell', m === 'sell');
+    L.querySelector('.stPut').textContent = m === 'own' ? 'Back to the deck' : 'Put back';
+    if (m === 'buy') {
+      const p = Deck.price(id), short = p > gold;
+      btn.classList.toggle('short', short);
+      btn.classList.toggle('armed', armed && !short);
+      btn.querySelector('.stBuyL').textContent = this._anim ? 'Bought' : (armed && !short ? 'Tap again' : 'Buy');
+      btn.querySelector('.stBuyP').innerHTML = `${Gold.mark(18)}<b>${Gold.fmt(p)}</b>`;
+      btn.setAttribute('aria-label', `Buy ${Deck.card(id).name} for ${Gold.fmt(p)} gold`);
+      L.querySelector('.stOwn').textContent = n ? (n === 1 ? 'One already in your deck' : n + ' already in your deck') : 'None in your deck yet';
+      if (short && !this._anim && !L.querySelector('.stMsg').textContent) this._msg(Gold.fmt(p - gold) + ' more gold needed', 'short');
+    } else if (m === 'sell') {
+      const p = Gold.sellPrice(id);
+      btn.classList.remove('short');
+      btn.classList.toggle('armed', armed);
+      btn.querySelector('.stBuyL').textContent = this._anim ? 'Sold' : (armed ? 'Tap again' : 'Sell');
+      btn.querySelector('.stBuyP').innerHTML = `${Gold.mark(18)}<b>${Gold.fmt(p)}</b>`;
+      btn.setAttribute('aria-label', `Sell ${Deck.card(id).name} for ${Gold.fmt(p)} gold`);
+      L.querySelector('.stOwn').textContent = (n === 1 ? 'Your only one' : n + ' in your deck') + ' · his price ' + Gold.fmt(Deck.price(id));
+    } else {
+      L.querySelector('.stOwn').textContent = n === 1 ? 'One in your deck' : n + ' in your deck';
+    }
   },
   _msg(t, kind) {
     const m = this.el && this.el.querySelector('.stLook .stMsg');
@@ -260,6 +654,14 @@ const Store = {
     m.dataset.k = kind || '';
   },
 
+  /* ---------------- the deal ---------------- */
+  _tapDeal() { return this._mode === 'sell' ? this._tapSell() : this._tapBuy(); },
+  // a dear deal (or the last copy sold) arms on the first tap; a second inside CONFIRM_GAP_MS is the same tap twice
+  _arm(ask) {
+    const now = performance.now();
+    if (!this._armedAt) { this._armedAt = now; this._msg(ask, 'ask'); this._paintDeal(); this._cue('ok'); return false; }
+    return now - this._armedAt >= this.CONFIRM_GAP_MS;
+  },
   async _tapBuy() {
     const id = this._id;
     if (!id || this._anim || (window.Gold && Gold._buying)) return;
@@ -269,16 +671,12 @@ const Store = {
     if (p > gold) {
       this._shake(btn);
       this._msg(Gold.fmt(p - gold) + ' more gold needed. Finish games to earn more.', 'short');
+      this.say(this._line('short', id, p - gold));
       this._cue('no');
       Deck.track('store', { ev: 'short', card: id, tier: Deck.card(id).tier, price: p, gold, need: p - gold });
       return;
     }
-    // DEAR: the first tap arms it; a second inside CONFIRM_GAP_MS is the same tap twice
-    const now = performance.now();
-    if (p > ((CFG.GOLD && CFG.GOLD.CONFIRM_OVER) || 200)) {
-      if (!this._armedAt) { this._armedAt = now; this._msg('Spend ' + Gold.fmt(p) + ' gold on this card?', 'ask'); this._paintDeal(); this._cue('ok'); return; }
-      if (now - this._armedAt < this.CONFIRM_GAP_MS) return;
-    }
+    if (p > ((CFG.GOLD && CFG.GOLD.CONFIRM_OVER) || 200) && !this._arm('Spend ' + Gold.fmt(p) + ' gold on this card?')) return;
     btn.classList.add('busy');
     btn.querySelector('.stBuyL').textContent = 'Buying…';
     this._msg('');
@@ -296,36 +694,80 @@ const Store = {
       return;
     }
     this._armedAt = 0;
-    await this._show(id, before, r);
+    await this._showBuy(id, before, r);
+  },
+  async _tapSell() {
+    const id = this._id;
+    if (!id || this._anim || (window.Gold && Gold._buying)) return;
+    const L = this.el.querySelector('.stLook'), btn = L.querySelector('.stBuy');
+    const p = Gold.sellPrice(id), n = Deck.count(id);
+    if (n < 1) { this.closeLook(false); return; }
+    if ((n === 1 || p > ((CFG.GOLD && CFG.GOLD.CONFIRM_OVER) || 200))
+        && !this._arm(n === 1 ? 'Your only one. Sell it for ' + Gold.fmt(p) + ' gold?' : 'Sell it for ' + Gold.fmt(p) + ' gold?')) return;
+    btn.classList.add('busy');
+    btn.querySelector('.stBuyL').textContent = 'Selling…';
+    this._msg('');
+    const before = Gold.balance();
+    const r = await Gold.sell(id);
+    btn.classList.remove('busy');
+    if (!r.ok) {
+      this._armedAt = 0;
+      if (r.reason === 'busy') { this._paintDeal(); return; }
+      this._shake(btn);
+      this._msg(r.reason === 'not_yet' ? 'The trader isn’t buying cards yet. Your deck is safe.' : r.reason === 'network' ? 'Couldn’t reach the trader. Your deck is safe — try again.' : Gold.why(r), 'warn');
+      this._cue('no');
+      this.paint();
+      return;
+    }
+    this._armedAt = 0;
+    await this._showSell(id, before, r);
   },
   _shake(el) {
     if (!el || Gold.reduced()) return;
     try { el.animate([{ transform: 'translateX(0)' }, { transform: 'translateX(-7px)' }, { transform: 'translateX(6px)' }, { transform: 'translateX(-4px)' }, { transform: 'translateX(2px)' }, { transform: 'translateX(0)' }], { duration: 360, easing: 'ease-out' }); } catch (e) {}
   },
+  // the card leaves the look: into the deck (a purchase) or to the trader's hands (a sale)
+  _flyCard(face, to, done) {
+    const a = face.getBoundingClientRect(), d = to.getBoundingClientRect();
+    const fly = face.cloneNode(true);
+    fly.classList.add('stFlying');
+    Object.assign(fly.style, { position: 'fixed', left: a.left + 'px', top: a.top + 'px', margin: 0, zIndex: 70, pointerEvents: 'none' });
+    document.body.appendChild(fly);
+    face.style.visibility = 'hidden';
+    const s = Math.max(0.08, d.height / a.height), dx = d.left + d.width / 2 - (a.left + a.width / 2), dy = d.top + d.height / 2 - (a.top + a.height / 2);
+    let ended = false;
+    const end = () => { if (ended) return; ended = true; fly.remove(); done(); };
+    try {
+      const an = fly.animate([
+        { transform: 'translate(0, 0) scale(1) rotate(0deg)', opacity: 1 },
+        { transform: `translate(${dx * 0.35}px, ${dy * 0.2 - 40}px) scale(${0.55 + s * 0.2}) rotate(-8deg)`, opacity: 1, offset: 0.35 },
+        { transform: `translate(${dx}px, ${dy}px) scale(${s}) rotate(4deg)`, opacity: 0.2 }],
+        { duration: 620, easing: 'cubic-bezier(.45,0,.55,1)', fill: 'forwards' });
+      an.onfinish = end;
+    } catch (e) { end(); }
+    setTimeout(end, 900);
+  },
   /* THE PURCHASE, SHOWN: coins leave the purse for the card, the purse
-     counting down as each lands; then the card flies into the deck, whose
-     count steps up as it arrives. The purchase was made before the first
-     coin moved — leaving mid-flight loses nothing. */
-  _show(id, before, r) {
+     counting down as each lands; then the card flies into the deck. The
+     purchase was made before the first coin moved — leaving mid-flight
+     loses nothing. */
+  _showBuy(id, before, r) {
     return new Promise(resolve => {
       const L = this.el.querySelector('.stLook'), face = L.querySelector('.stLookCard .ccard');
       const goldEl = this.el.querySelector('.stGold'), purse = this.el.querySelector('.stPurseImg') || goldEl;
-      const after = r.gold, spent = Math.max(0, before - after), deckN = this.el.querySelector('.stDeckN');
+      const after = r.gold, spent = Math.max(0, before - after);
       this._anim = true;
       this._shown = before;
       this._paintDeal();
       const finish = () => {
         this._anim = false;
         this._shown = Gold.balance();
+        this.closeLook(true);
+        this.say(this._line('bought', id));
         this.paint();
         resolve();
       };
-      if (Gold.reduced() || !face) {
-        this._cue('buy');
-        this.closeLook(true);
-        finish();
-        return;
-      }
+      if (Gold.reduced() || !face) { this._cue('buy'); finish(); return; }
       const n = Math.max(6, Math.min(16, Math.round(spent / 25)));
       Gold.fly({
         from: Gold.at(purse), to: () => Gold.at(face), n, size: 26,
@@ -339,39 +781,57 @@ const Store = {
           this._shown = after;
           goldEl.textContent = Gold.fmt(after);
           Gold.sound('purse');
-          // the card goes into the deck
-          const a = face.getBoundingClientRect(), d = this.el.querySelector('.stDeck').getBoundingClientRect();
-          const fly = face.cloneNode(true);
-          fly.classList.add('stFlying');
-          Object.assign(fly.style, { position: 'fixed', left: a.left + 'px', top: a.top + 'px', margin: 0, zIndex: 70, pointerEvents: 'none' });
-          document.body.appendChild(fly);
-          face.style.visibility = 'hidden';
-          const s = Math.max(0.08, d.height / a.height), dx = d.left + d.width / 2 - (a.left + a.width / 2), dy = d.top + d.height / 2 - (a.top + a.height / 2);
-          let ended = false;
-          const end = () => {
-            if (ended) return;
-            ended = true;
-            fly.remove();
-            this.closeLook(true);
-            deckN.textContent = String(Deck.total());
-            Gold.settle(this.el.querySelector('.stDeck'));
-            this._cue('buy');
-            finish();
-          };
-          try {
-            const an = fly.animate([
-              { transform: 'translate(0, 0) scale(1) rotate(0deg)', opacity: 1 },
-              { transform: `translate(${dx * 0.35}px, ${dy * 0.2 - 40}px) scale(${0.55 + s * 0.2}) rotate(-8deg)`, opacity: 1, offset: 0.35 },
-              { transform: `translate(${dx}px, ${dy}px) scale(${s}) rotate(4deg)`, opacity: 0.85 }],
-              { duration: 620, easing: 'cubic-bezier(.45,0,.55,1)', fill: 'forwards' });
-            an.onfinish = end;
-          } catch (e) { end(); }
-          setTimeout(end, 900);
+          const deckTab = this.el.querySelector('.stMode[data-mode="own"]');
+          this._flyCard(face, deckTab, () => { Gold.settle(deckTab); this._cue('buy'); finish(); });
         },
       });
     });
   },
-  // the game's own voices: a tap's tick, a refusal's knock, a purchase's chime
+  /* THE SALE, SHOWN: the card goes to the trader's hands, and his coins come
+     back to the purse, which counts up as each lands. Sold before the card
+     moved, like a purchase. */
+  _showSell(id, before, r) {
+    return new Promise(resolve => {
+      const L = this.el.querySelector('.stLook'), face = L.querySelector('.stLookCard .ccard');
+      const goldEl = this.el.querySelector('.stGold'), purse = this.el.querySelector('.stPurseImg') || goldEl;
+      const after = r.gold, got = Math.max(0, after - before);
+      this._anim = true;
+      this._shown = before;
+      this._paintDeal();
+      const finish = () => {
+        this._anim = false;
+        this._shown = Gold.balance();
+        this.closeLook(true);
+        this.render();
+        this.say(this._line('sold', id, got || r.price));
+        resolve();
+      };
+      if (Gold.reduced() || !face) { this._cue('buy'); finish(); return; }
+      const trader = this.el.querySelector('.mkTrader');
+      const from = Gold.at(face);
+      this._flyCard(face, trader, () => {
+        const n = Math.max(6, Math.min(16, Math.round(got / 25)));
+        Gold.fly({
+          from, to: () => Gold.at(purse), n, size: 26,
+          onEach: (i, k) => {
+            this._shown = Math.round(before + got * (i + 1) / k);
+            goldEl.textContent = Gold.fmt(this._shown);
+            Gold.sound('coin');
+            if (i === 0) Gold.pop(goldEl);
+          },
+          onDone: () => {
+            this._shown = after;
+            goldEl.textContent = Gold.fmt(after);
+            Gold.sound('purse');
+            Gold.settle(this.el.querySelector('.stPurse'));
+            this._cue('buy');
+            finish();
+          },
+        });
+      });
+    });
+  },
+  // the game's own voices: a tap's tick, a refusal's knock, a deal's chime
   _cue(kind) {
     try {
       if (kind === 'buy') { if (typeof Sound !== 'undefined' && Sound.ui) Sound.ui('complete'); return; }
@@ -385,13 +845,16 @@ const Store = {
     const a = e.target.closest('[data-act]');
     if (!a) return;
     const act = a.dataset.act;
-    if (act === 'back') return this.back();
+    if (act === 'step') return this.step();
     if (this._anim) return;
+    if (act === 'mode') return this.setMode(a.dataset.mode);
+    if (act === 'tier') { if (!a.classList.contains('none')) this.jumpTier(a.dataset.tier); return; }
     if (act === 'look') return this.look(a.dataset.card, a.querySelector('.ccard'));
     if (act === 'unlook') return this.closeLook(false);
-    if (act === 'flip') { const f = L.querySelector('.ccard'); if (f) { f.classList.toggle('flip'); this._cue('ok'); } return; }
-    if (act === 'buy') return this._tapBuy();
-    if (act === 'deck' && window.DeckScreens && DeckScreens.openCollection) return DeckScreens.openCollection('title');
+    if (act === 'flip') { const f = L.querySelector('.ccard'); if (f) { clearTimeout(this._flipT); f.classList.toggle('flip'); this._cue('ok'); } return; }
+    if (act === 'deal') return this._tapDeal();
+    // the card announcement, on purpose (js/cardintro.js), from the Deck
+    if (act === 'intro' && window.CardIntro) { CardIntro.show('store'); return; }
   },
 
   _css() {
@@ -404,143 +867,199 @@ const Store = {
 };
 
 Store.CSS = `
-#scrStore { padding: 0; display: none; flex-direction: column; align-items: center; overflow: hidden; background: #120c07; }
-#scrStore.show { display: flex; }
-#scrStore .stBg { position: absolute; inset: 0; z-index: 0; display: block; }
-#scrStore .stBg img { width: 100%; height: 100%; object-fit: cover; object-position: 50% 0; display: block; }
-#scrStore .stShade { position: absolute; inset: 0; z-index: 0; pointer-events: none;
-  background: linear-gradient(rgba(6,4,2,0.72) 0, rgba(6,4,2,0.18) 96px, rgba(6,4,2,0.05) 32%, rgba(6,4,2,0.5) 70%, rgba(6,4,2,0.82)); }
-#scrStore .stHead { position: relative; z-index: 2; width: 100%; max-width: 940px; box-sizing: border-box; display: flex; align-items: center; gap: 10px;
-  padding: calc(var(--safe-top, 0px) + 8px) 12px 8px; }
-#scrStore .stBack, #scrStore .stDeck { position: relative; isolation: isolate; height: 44px; flex: 0 0 auto; padding: 0; border: 0; background: none; cursor: pointer;
+#scrStore { padding: 0; display: none; overflow: hidden; background: #160d0a; }
+#scrStore.show { display: block; }
+#scrStore .mkScene { position: absolute; z-index: 0; pointer-events: none; }
+#scrStore .mkScene img { position: absolute; display: block; max-width: none; image-rendering: auto; }
+#scrStore .mkScene.px img { image-rendering: pixelated; }
+#scrStore .mkBg { left: 0; top: 0; width: 100%; height: 100%; }
+#scrStore .mkExt { position: absolute; left: 0; width: 100%; display: block;
+  background: repeating-linear-gradient(90deg, rgba(0,0,0,0) 0 54px, #221a21 54px 56px, #4e3529 56px 57px), linear-gradient(#3a2626, #2a1c1e 60%, #170f12); }
+#scrStore .mkSb { position: absolute; left: 0; bottom: 0; width: 1px; height: env(safe-area-inset-bottom, 0px); pointer-events: none; visibility: hidden; }
+/* THE HEADER: back, the name, the purse */
+#scrStore .stHead { position: absolute; left: 0; right: 0; top: 0; z-index: 6; display: flex; align-items: center; gap: 10px; box-sizing: border-box;
+  padding: calc(var(--safe-top, 0px) + 8px) max(12px, env(safe-area-inset-right, 0px)) 12px max(12px, env(safe-area-inset-left, 0px));
+  background: linear-gradient(rgba(10,6,3,0.86), rgba(10,6,3,0.55) 68%, rgba(10,6,3,0)); }
+#scrStore .stBack { position: relative; isolation: isolate; width: 46px; height: 44px; flex: 0 0 auto; padding: 0; border: 0; background: none; cursor: pointer;
   color: #f1d17a; display: flex; align-items: center; justify-content: center; -webkit-appearance: none; appearance: none; -webkit-tap-highlight-color: transparent; }
-#scrStore .stBack { width: 46px; }
-#scrStore .stDeck { min-width: 64px; padding: 0 10px 0 6px; gap: 3px; margin-left: auto; }
-#scrStore .stBack::before, #scrStore .stDeck::before { content: ''; position: absolute; inset: 0; z-index: -1; clip-path: var(--hud-chamfer);
+#scrStore .stBack::before { content: ''; position: absolute; inset: 0; z-index: -1; clip-path: var(--hud-chamfer);
   border: 8px solid transparent; border-image: var(--plate-rim) 32 / 8px stretch; background: var(--plate-face-solid); }
 #scrStore .stBack svg { width: 18px; height: 18px; filter: drop-shadow(0 1px 0 #000); }
-#scrStore .stBack:active, #scrStore .stDeck:active { translate: 0 2px; }
-#scrStore .stDeckI { width: 32px; height: 32px; filter: drop-shadow(0 1px 1px rgba(0,0,0,0.7)); }
-#scrStore .stDeckN { font: 700 17px/1 var(--numfont); color: #ffe7a8; text-shadow: 0 1px 0 #000; font-variant-numeric: tabular-nums; }
-#scrStore .stTitle { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
-#scrStore .stTitle h2 { margin: 0; font: 800 26px/1 var(--menufont); letter-spacing: 2px; white-space: nowrap;
+#scrStore .stBack:active { translate: 0 2px; }
+#scrStore .stTitle { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+#scrStore .stTitle h2 { margin: 0; font: 800 24px/1 var(--menufont); letter-spacing: 1.6px; white-space: nowrap;
   background: linear-gradient(#fff3c8 0%, #f2cd6a 45%, #c08a2c 100%); -webkit-background-clip: text; background-clip: text; color: transparent;
   filter: drop-shadow(0 2px 0 rgba(0,0,0,0.85)); }
-#scrStore .stTitle small { font: 700 10.5px/1 var(--menufont); letter-spacing: 2.4px; text-transform: uppercase; color: rgba(236,214,160,0.86);
-  text-shadow: 0 1px 0 #000; }
-/* THE FRAME: the settings page's carved walnut (js/settings.js .sxFrame), its corners its own */
-#scrStore .stFrame { position: relative; z-index: 1; flex: 1 1 auto; min-height: 0; width: calc(100% - 20px); max-width: 940px; box-sizing: border-box;
-  margin: clamp(60px, 22vh, 240px) 10px calc(env(safe-area-inset-bottom, 0px) + 10px); display: flex; flex-direction: column; padding: 10px;
+#scrStore .stSub { font: 700 10px/1 var(--menufont); letter-spacing: 2.4px; text-transform: uppercase; color: rgba(236,214,160,0.86); text-shadow: 0 1px 0 #000; white-space: nowrap; }
+#scrStore .stPurse { flex: 0 0 auto; display: inline-flex; align-items: center; gap: 5px; height: 40px; padding: 0 12px 0 4px; border-radius: 20px;
+  background: linear-gradient(#24180c, #110b06); box-shadow: inset 0 0 0 1.5px #b98a32, inset 0 0 0 3px #1a1108, 0 2px 5px rgba(0,0,0,0.6); }
+#scrStore .stPurseImg { width: 34px; height: 34px; image-rendering: pixelated; filter: drop-shadow(0 1px 1px rgba(0,0,0,0.7)); }
+#scrStore .stPurse b { font: 700 19px/1 var(--numfont); color: #ffe7a0; text-shadow: 0 1px 0 #000; font-variant-numeric: tabular-nums; }
+#scrStore .stGold { display: inline-block; transform-origin: 30% 60%; }
+#scrStore .stPurseW { font: 700 9.5px/1 var(--menufont); letter-spacing: 1.4px; text-transform: uppercase; color: #e9cf8a; }
+@media (max-width: 460px) {
+  #scrStore .stHead { gap: 8px; }
+  #scrStore .stTitle h2 { font-size: 20px; letter-spacing: 1px; }
+  #scrStore .stSub { font-size: 9px; letter-spacing: 2px; }
+  #scrStore .stPurseW { display: none; }
+  #scrStore .stPurse { height: 36px; padding-right: 10px; }
+  #scrStore .stPurseImg { width: 28px; height: 28px; }
+  #scrStore .stPurse b { font-size: 17px; }
+}
+@media (max-width: 370px) { #scrStore .stTitle h2 { font-size: 17px; letter-spacing: 0.6px; } #scrStore .stBack { width: 42px; } }
+@media (min-width: 900px) {
+  #scrStore .stHead { padding-left: 28px; padding-right: 28px; }
+  #scrStore .stTitle h2 { font-size: 32px; }
+  #scrStore .stSub { font-size: 11px; }
+}
+/* HIS WORDS: a parchment bubble at his head */
+#scrStore .mkSay { position: absolute; z-index: 4; box-sizing: border-box; padding: 8px 12px 10px; pointer-events: none;
+  font: italic 500 15px/1.28 var(--numfont); color: #2b1a0c;
+  background: linear-gradient(#f2e5c2, #ddc79b); border: 2px solid #3a2414; border-radius: 6px;
+  box-shadow: 0 3px 0 rgba(0,0,0,0.45), inset 0 1px 0 rgba(255,255,255,0.5); --tx: 30px; --ty: 20px; }
+#scrStore .mkSay[hidden] { display: none; }
+#scrStore .mkSay em { font-style: normal; font-weight: 700; color: #6a3a0c; }
+#scrStore .mkWho { display: block; margin-bottom: 4px; font: 800 9px/1 var(--menufont); letter-spacing: 1.8px; text-transform: uppercase; color: #7a4a16; }
+#scrStore .mkSay::after { content: ''; position: absolute; width: 12px; height: 12px; background: #ddc79b; border: 2px solid #3a2414; }
+#scrStore .mkSay[data-tail="b"]::after { left: var(--tx); bottom: -8px; border-top: 0; border-left: 0; transform: rotate(45deg); }
+#scrStore .mkSay[data-tail="l"]::after { left: -8px; top: var(--ty); border-top: 0; border-right: 0; transform: rotate(45deg); background: #e8d6ad; }
+#scrStore .mkSay[data-tail="r"]::after { right: -8px; top: var(--ty); border-bottom: 0; border-left: 0; transform: rotate(45deg); background: #e8d6ad; }
+@media (min-width: 900px) { #scrStore .mkSay { font-size: 18px; padding: 10px 14px 12px; } #scrStore .mkWho { font-size: 10px; } }
+#scrStore .mkSay.narrow { font-size: 13.5px; padding: 7px 9px 8px; }
+/* THE OFFERS: signs on the counter's front */
+#scrStore .mkOffers { position: absolute; z-index: 3; display: flex; gap: 14px; filter: drop-shadow(0 6px 8px rgba(0,0,0,0.6)); }
+#scrStore .mkOffers[hidden] { display: none; }
+#scrStore .mkOffers.col { right: 0; flex-direction: column; align-items: center; gap: 10px; }
+#scrStore .mkOffers.side { flex-direction: column; gap: 8px; }
+#scrStore .mkOffer { position: relative; isolation: isolate; display: flex; align-items: center; gap: 12px; width: 226px; height: 64px; padding: 0 18px 0 12px;
+  border: 0; background: none; cursor: pointer; text-align: left; color: #f3e2b4; -webkit-appearance: none; appearance: none; -webkit-tap-highlight-color: transparent; }
+#scrStore .mkOffers.col .mkOffer { width: min(320px, calc(100vw - 48px)); height: 56px; }
+#scrStore .mkOffers.side .mkOffer { width: 220px; height: 52px; }
+#scrStore .mkOffer::before { content: ''; position: absolute; inset: 0; z-index: -1; clip-path: var(--hud-chamfer);
+  border: 8px solid transparent; border-image: var(--plate-rim) 32 / 8px stretch;
+  background: linear-gradient(rgba(255,240,200,0.07), rgba(255,240,200,0) 12px) border-box, linear-gradient(#41331f, #261c10) border-box; }
+#scrStore .mkOffer.lit { color: #fff0bf; }
+#scrStore .mkOffer.lit::before { border-image-source: var(--plate-rim-lit); background: var(--plate-face-lit); }
+#scrStore .mkOffer:active { translate: 0 2px; }
+@media (hover: hover) { #scrStore .mkOffer:hover { filter: brightness(1.12); } }
+#scrStore .mkOffer:focus-visible { outline: 2px solid #f2cf73; outline-offset: 3px; }
+#scrStore .mkOi { width: 38px; height: 38px; flex: 0 0 auto; display: flex; align-items: center; justify-content: center; }
+#scrStore .mkOi img { width: 36px; height: 36px; image-rendering: pixelated; }
+#scrStore .mkOi svg { width: 30px; height: 34px; }
+#scrStore .mkOffer > span { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+#scrStore .mkOffer b { font: 800 19px/1 var(--menufont); letter-spacing: 1.5px; text-transform: uppercase; text-shadow: 0 1px 0 #000; white-space: nowrap; }
+#scrStore .mkOffer small { font: 600 13px/1 var(--numfont); color: #d8c597; text-shadow: 0 1px 0 #000; white-space: nowrap; }
+/* THE CASE: the album's black panel in the settings page's carved gold rim */
+#scrStore .stCase { position: absolute; z-index: 2; display: flex; flex-direction: column; box-sizing: border-box;
+  padding: 10px 8px calc(env(safe-area-inset-bottom, 0px) + 6px);
   background:
-    repeating-linear-gradient(92deg, rgba(255,214,150,0.022) 0 1px, rgba(0,0,0,0) 1px 6px, rgba(0,0,0,0.05) 6px 7px, rgba(0,0,0,0) 7px 13px),
-    radial-gradient(ellipse 80% 50% at 50% 0%, rgba(150,96,40,0.28), rgba(0,0,0,0) 70%),
-    linear-gradient(rgba(42,29,17,0.97), rgba(28,20,11,0.97) 60%, rgba(22,15,8,0.98));
+    radial-gradient(ellipse 90% 70% at 50% 35%, rgba(64,40,20,0.34), rgba(0,0,0,0) 70%),
+    repeating-linear-gradient(45deg, rgba(255,255,255,0.012) 0 2px, rgba(0,0,0,0.02) 2px 4px),
+    linear-gradient(#1b130c, #120c07 60%, #0d0805);
   box-shadow: inset 0 0 0 2px #0b0704, inset 0 0 0 4px #b98a32, inset 0 0 0 5px #f3d27a, inset 0 0 0 6px #6b4a16, inset 0 0 0 8px #0b0704,
-    inset 0 0 26px rgba(0,0,0,0.65), 0 12px 34px rgba(0,0,0,0.65); }
-#scrStore .stC { position: absolute; z-index: 3; display: block; width: 42px; height: 42px; pointer-events: none; filter: drop-shadow(0 2px 2px rgba(0,0,0,0.6)); }
+    inset 0 0 40px rgba(0,0,0,0.85), 0 -6px 24px rgba(0,0,0,0.55); }
+#scrStore .stCase[hidden] { display: none; }
+#scrStore .stCase.side { padding: 14px 14px 10px; box-shadow: inset 0 0 0 2px #0b0704, inset 0 0 0 4px #b98a32, inset 0 0 0 5px #f3d27a, inset 0 0 0 6px #6b4a16,
+  inset 0 0 0 8px #0b0704, inset 0 0 40px rgba(0,0,0,0.85), 0 10px 30px rgba(0,0,0,0.7); }
+#scrStore .stC { position: absolute; z-index: 3; display: block; width: 40px; height: 40px; pointer-events: none; filter: drop-shadow(0 2px 2px rgba(0,0,0,0.6)); }
 #scrStore .stC svg { display: block; width: 100%; height: 100%; overflow: visible; }
 #scrStore .stC.tl { left: -6px; top: -6px; }
 #scrStore .stC.tr { right: -6px; top: -6px; transform: scaleX(-1); }
 #scrStore .stC.bl { left: -6px; bottom: -6px; transform: scaleY(-1); }
 #scrStore .stC.br { right: -6px; bottom: -6px; transform: scale(-1, -1); }
-/* THE PURSE: always in view, at the head of the counter */
-#scrStore .stPurse { position: relative; flex: 0 0 auto; display: flex; align-items: center; gap: 10px; margin: 2px 4px 8px; padding: 8px 12px 8px 8px;
-  isolation: isolate; }
-#scrStore .stPurse::before { content: ''; position: absolute; inset: 0; z-index: -1; clip-path: var(--hud-chamfer);
-  border: 8px solid transparent; border-image: var(--plate-rim-lit) 32 / 8px stretch; background: var(--plate-face-lit); }
-#scrStore .stPurseImg { width: 48px; height: 48px; flex: 0 0 auto; image-rendering: pixelated; filter: drop-shadow(0 2px 2px rgba(0,0,0,0.7)); }
-#scrStore .stPurseT { display: flex; flex-direction: column; gap: 1px; flex: 0 0 auto; }
-#scrStore .stPurseT small { font: 700 10px/1 var(--menufont); letter-spacing: 2px; text-transform: uppercase; color: rgba(255,236,190,0.82); }
-#scrStore .stPurseT b { font: 700 30px/1 var(--numfont); color: #ffe7a0; text-shadow: 0 2px 0 #2a1704, 0 0 10px rgba(255,200,80,0.35);
-  font-variant-numeric: tabular-nums; white-space: nowrap; display: inline-block; transform-origin: 30% 60%; }
-#scrStore .stPurseT b em { font: 700 14px/1 var(--menufont); font-style: normal; letter-spacing: 1.5px; color: #f2d58a; text-transform: uppercase; }
-#scrStore .stGold { display: inline-block; }
-#scrStore .stPurseHow { margin: 0 0 0 auto; max-width: 300px; font: 500 13px/1.3 var(--numfont); color: rgba(244,228,190,0.82); text-align: right; }
-@media (max-width: 420px) { #scrStore .stPurseHow { font-size: 12px; max-width: 150px; } }
-@media (max-width: 345px) { #scrStore .stPurseHow { display: none; } }
-#scrStore .stPane { flex: 1 1 auto; min-height: 0; overflow-y: auto; overflow-x: hidden; -webkit-overflow-scrolling: touch; touch-action: pan-y;
-  overscroll-behavior: contain; padding: 0 4px 14px; scrollbar-width: thin; scrollbar-color: #8a6420 transparent; }
+@media (min-width: 900px) { #scrStore .stC { width: 52px; height: 52px; } }
+#scrStore .stModes { flex: 0 0 auto; display: flex; gap: 6px; padding: 2px 4px 8px; }
+#scrStore .stMode, #scrStore .stTier { position: relative; isolation: isolate; border: 0; background: none; cursor: pointer; -webkit-appearance: none; appearance: none;
+  -webkit-tap-highlight-color: transparent; color: #d9caa6; }
+#scrStore .stMode { flex: 1 1 0; min-width: 0; height: 44px; display: flex; align-items: center; justify-content: center; gap: 7px;
+  font: 800 13px/1 var(--menufont); letter-spacing: 1px; text-transform: uppercase; }
+#scrStore .stMode::before, #scrStore .stTier::before { content: ''; position: absolute; inset: 0; z-index: -1; clip-path: var(--hud-chamfer);
+  border: 8px solid transparent; border-image: var(--plate-rim) 32 / 8px stretch;
+  background: linear-gradient(rgba(255,240,200,0.06), rgba(255,240,200,0) 10px) border-box, linear-gradient(#3b3020, #241c11) border-box; }
+#scrStore .stMode.on, #scrStore .stTier.on { color: #fff0bf; }
+#scrStore .stMode.on::before, #scrStore .stTier.on::before { border-image-source: var(--plate-rim-lit); background: var(--plate-face-lit); }
+#scrStore .stMode img { width: 22px; height: 22px; image-rendering: pixelated; }
+#scrStore .stModeI { width: 18px; height: 20px; }
+#scrStore .stTiers { flex: 0 0 auto; display: flex; gap: 5px; padding: 0 4px 9px; border-bottom: 1px solid rgba(214,170,74,0.22); }
+#scrStore .stTier { flex: 1 1 0; min-width: 0; height: 42px; padding: 0 2px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px;
+  font: 800 9px/1 var(--menufont); letter-spacing: 0.4px; text-transform: uppercase; color: #cfbf9a; }
+#scrStore .stTier::before { border-width: 6px; border-image: var(--plate-rim-thin) 32 / 6px stretch; background: linear-gradient(#2a2015, #17110a) border-box; }
+#scrStore .stTier.none { opacity: 0.38; cursor: default; }
+#scrStore .stTn { display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; color: var(--tc); text-shadow: 0 1px 0 #000; }
+#scrStore .stTier.on .stTn { color: #fff0bf; }
+#scrStore .stGem { width: 11px; height: 11px; color: var(--tc); flex: 0 0 auto; filter: drop-shadow(0 1px 0 #000); }
+#scrStore .stTier em { display: inline-flex; align-items: center; gap: 2px; font: 700 11px/1 var(--numfont); font-style: normal; letter-spacing: 0; color: #f6dc8c; white-space: nowrap; }
+#scrStore .stCase.roomy .stTier { flex-direction: row; gap: 6px; font-size: 10.5px; }
+#scrStore .stCase.roomy .stTier em { font-size: 12.5px; }
+#scrStore .stPane { position: relative; flex: 1 1 auto; min-height: 0; overflow-y: auto; overflow-x: hidden; -webkit-overflow-scrolling: touch; touch-action: pan-y;
+  overscroll-behavior: contain; padding: 0 0 10px; scrollbar-width: thin; scrollbar-color: #8a6420 transparent; }
 #scrStore .stShelves { width: 100%; }
-/* A SHELF A TIER: its gem, its name in its colour, its price */
-#scrStore .stShelf { margin: 4px 0 14px; --tc: #d8c8a0; }
-#scrStore .stShelfH { position: sticky; top: 0; z-index: 2; display: flex; align-items: center; gap: 8px; margin: 0 0 9px; padding: 8px 10px;
-  background: linear-gradient(#2f2214, #21170c); box-shadow: inset 0 -1px 0 rgba(214,170,74,0.45), 0 4px 8px rgba(0,0,0,0.45);
-  font: 700 17px/1 var(--menufont); letter-spacing: 1.6px; text-transform: uppercase; color: var(--tc); text-shadow: 0 1px 0 #000; }
-#scrStore .stGem { width: 18px; height: 18px; color: var(--tc); flex: 0 0 auto; filter: drop-shadow(0 1px 0 #000); }
-#scrStore .stShelfH small { font: 700 10px/1 var(--menufont); letter-spacing: 1.8px; color: rgba(236,220,186,0.7); }
-#scrStore .stEach { margin-left: auto; display: flex; align-items: center; gap: 5px; font: 700 17px/1 var(--numfont); letter-spacing: 0; color: #ffe7a8; text-transform: none; }
-#scrStore .stWares { display: grid; grid-template-columns: repeat(var(--cols, 3), var(--cw)); justify-content: space-evenly; gap: 12px 3px; }
-#scrStore .stItem { position: relative; display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 0; border: 0; background: none;
+#scrStore .stShelf { padding: 12px 0 4px; }
+#scrStore .stShelf + .stShelf { border-top: 1px solid rgba(214,170,74,0.28); margin-top: 6px; }
+#scrStore .stWares { display: grid; grid-template-columns: repeat(var(--cols, 3), var(--cw)); justify-content: space-evenly; gap: 14px 3px; }
+#scrStore .stItem { position: relative; display: flex; flex-direction: column; align-items: center; gap: 5px; padding: 0; border: 0; background: none;
   cursor: pointer; color: inherit; -webkit-tap-highlight-color: transparent; }
-#scrStore .stItem .ccard { filter: drop-shadow(0 4px 6px rgba(0,0,0,0.6)); transition: translate 90ms ease-out; }
+#scrStore .stItem .ccard { filter: drop-shadow(0 5px 4px rgba(0,0,0,0.85)) drop-shadow(0 1px 1px rgba(0,0,0,0.9)); transition: translate 90ms ease-out; }
 #scrStore .stItem:active .ccard { translate: 0 2px; }
-@media (hover: hover) { #scrStore .stItem:hover .ccard { translate: 0 -3px; filter: drop-shadow(0 7px 9px rgba(0,0,0,0.6)) drop-shadow(0 0 8px rgba(255,210,110,0.25)); } }
+@media (hover: hover) { #scrStore .stItem:hover .ccard { translate: 0 -3px; filter: drop-shadow(0 7px 9px rgba(0,0,0,0.75)) drop-shadow(0 0 8px rgba(255,210,110,0.25)); } }
 #scrStore .stItem:focus-visible { outline: 2px solid #f2cf73; outline-offset: 3px; }
-/* the price tag: a coin and its number; a card short of the purse wears it red */
-#scrStore .stTag { position: relative; isolation: isolate; display: flex; align-items: center; justify-content: center; flex-wrap: wrap; column-gap: 5px; row-gap: 0;
-  min-width: 74px; padding: 5px 10px 6px; }
+#scrStore .stItem.unknown { cursor: default; }
+#scrStore .stTag { position: relative; isolation: isolate; display: flex; align-items: center; justify-content: center; flex-wrap: wrap; column-gap: 4px; row-gap: 0;
+  min-width: 70px; padding: 4px 10px 5px; }
 #scrStore .stTag::before { content: ''; position: absolute; inset: 0; z-index: -1; clip-path: var(--hud-chamfer);
-  border: 8px solid transparent; border-image: var(--plate-rim-thin) 32 / 8px stretch; background: var(--plate-face-solid); }
-#scrStore .stP { font: 700 17px/1 var(--numfont); color: #ffe7a8; text-shadow: 0 1px 0 #000; font-variant-numeric: tabular-nums; }
+  border: 6px solid transparent; border-image: var(--plate-rim-thin) 32 / 6px stretch; background: linear-gradient(#2c2115, #17100a) border-box; }
+#scrStore .stP { font: 700 16px/1 var(--numfont); color: #ffe7a8; text-shadow: 0 1px 0 #000; font-variant-numeric: tabular-nums; }
+#scrStore .stHave { font: 700 12.5px/1 var(--numfont); font-style: normal; color: #d6c8a4; text-shadow: 0 1px 0 #000; margin-left: 3px; }
+#scrStore .stTag.own .stHave { margin: 0; color: #f3e2b4; }
+#scrStore .stItem.unknown .stTag.own .stHave { font: 700 9px/1 var(--menufont); letter-spacing: 1px; text-transform: uppercase; color: #8d7f66; }
 #scrStore .stMore { flex: 0 0 100%; text-align: center; font: 700 10.5px/1.15 var(--menufont); letter-spacing: .6px; color: #ff9d7f; text-shadow: 0 1px 0 #000; }
 #scrStore .stMore:empty { display: none; }
 #scrStore .stItem.short .stP { color: #ff8a6a; }
 #scrStore .stItem.short .stTag::before { border-image-source: var(--plate-rim-redq); }
-/* THE CLOSER LOOK */
-#scrStore .stLook { position: absolute; inset: 0; z-index: 8; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px;
-  padding: calc(var(--safe-top, 0px) + 16px) 16px calc(env(safe-area-inset-bottom, 0px) + 16px);
-  background: radial-gradient(ellipse 70% 60% at 50% 42%, rgba(40,26,10,0.84), rgba(4,3,2,0.96)); }
+#scrStore .stEmpty { margin: 26px 16px; text-align: center; font: italic 500 16px/1.35 var(--numfont); color: rgba(236,220,186,0.74); }
+#scrStore .stEmpty[hidden] { display: none; }
+#scrStore .stHow { display: block; margin: 14px auto 6px; padding: 8px 14px; border: 0; background: none; cursor: pointer;
+  font: 700 11px/1 var(--menufont); letter-spacing: 1.6px; text-transform: uppercase; color: #e6c66e; text-decoration: underline;
+  text-underline-offset: 4px; text-decoration-color: rgba(230,198,110,0.45); }
+#scrStore .stHow[hidden] { display: none; }
+/* A CARD HELD UP, over the case */
+#scrStore .stCase.holding > .stModes, #scrStore .stCase.holding > .stTiers, #scrStore .stCase.holding > .stPane { filter: brightness(0.26) saturate(0.7); }
+#scrStore .stLook { position: absolute; z-index: 5; display: flex; flex-direction: column; align-items: center; justify-content: flex-start; gap: 12px;
+  padding: 6px 12px calc(env(safe-area-inset-bottom, 0px) + 8px); box-sizing: border-box; }
 #scrStore .stLook[hidden] { display: none; }
-#scrStore .stX { position: absolute; top: calc(var(--safe-top, 0px) + 10px); right: 12px; width: 44px; height: 44px; border: 0; background: none; color: #f1d17a;
-  isolation: isolate; cursor: pointer; display: flex; align-items: center; justify-content: center; }
-#scrStore .stX::before { content: ''; position: absolute; inset: 0; z-index: -1; clip-path: var(--hud-chamfer);
-  border: 8px solid transparent; border-image: var(--plate-rim) 32 / 8px stretch; background: var(--plate-face-solid); }
-#scrStore .stX svg { width: 16px; height: 16px; }
-#scrStore .stLookCard { cursor: pointer; filter: drop-shadow(0 12px 22px rgba(0,0,0,0.7)) drop-shadow(0 0 18px rgba(255,200,110,0.16)); }
-#scrStore .stCap { margin: 0; font: 600 12px/1 var(--menufont); letter-spacing: 1.4px; text-transform: uppercase; color: rgba(236,220,186,0.72); }
-#scrStore .stDeal { display: flex; flex-direction: column; align-items: center; gap: 7px; width: min(340px, 100%); }
-#scrStore .stBuy { position: relative; isolation: isolate; width: 100%; min-height: 56px; border: 0; background: none; cursor: pointer;
-  display: flex; align-items: center; justify-content: center; gap: 14px; padding: 6px 18px; color: #fff0bf; -webkit-tap-highlight-color: transparent;
-  font: 700 18px/1 var(--menufont); letter-spacing: 2.4px; text-transform: uppercase; text-shadow: 0 1px 0 #000; }
-#scrStore .stBuy::before { content: ''; position: absolute; inset: 0; z-index: -1; clip-path: var(--hud-chamfer);
-  border: 8px solid transparent; border-image: var(--plate-rim-lit) 32 / 8px stretch; background: var(--plate-face-lit);
-  filter: drop-shadow(0 0 10px rgba(255,200,90,0.25)); }
-#scrStore .stBuyP { display: flex; align-items: center; gap: 6px; }
-#scrStore .stBuyP b { font: 700 22px/1 var(--numfont); letter-spacing: 0; color: #ffe7a0; }
-#scrStore .stBuy:active { translate: 0 2px; }
-#scrStore .stBuy.armed::before { border-image-source: var(--plate-rim-gold); }
-#scrStore .stBuy.armed { color: #fff7da; }
-#scrStore .stBuy.short { color: #f0d9c8; }
+#scrStore .stLook.row { flex-direction: row; justify-content: center; align-items: center; gap: 14px; padding-top: 8px; }
+#scrStore .stLook.row .stDeal { width: 176px; flex: 0 0 auto; }
+#scrStore .stLook.row .stDealRow { flex-direction: column; align-items: stretch; }
+#scrStore .stLook.row .stBuy { max-width: none; }
+#scrStore .stLookCard { cursor: pointer; filter: drop-shadow(0 12px 18px rgba(0,0,0,0.85)) drop-shadow(0 0 18px rgba(255,200,110,0.16)); }
+#scrStore .stDeal { display: flex; flex-direction: column; align-items: center; gap: 7px; width: min(400px, 100%); }
+#scrStore .stDealRow { display: flex; gap: 10px; justify-content: center; width: 100%; }
+#scrStore .stBuy, #scrStore .stPut { position: relative; isolation: isolate; min-height: 50px; border: 0; background: none; cursor: pointer;
+  display: flex; align-items: center; justify-content: center; -webkit-appearance: none; appearance: none; -webkit-tap-highlight-color: transparent;
+  font: 800 16px/1 var(--menufont); letter-spacing: 1.8px; text-transform: uppercase; }
+#scrStore .stBuy { flex: 1 1 auto; max-width: 230px; gap: 10px; padding: 6px 18px; color: #2c1604; text-shadow: 0 1px 0 rgba(255,240,200,0.5); }
+#scrStore .stBuy[hidden] { display: none; }
+#scrStore .stBuy::before, #scrStore .stPut::before { content: ''; position: absolute; inset: 0; z-index: -1; clip-path: var(--hud-chamfer); border: 8px solid transparent; }
+#scrStore .stBuy::before { border-image: var(--plate-rim-gold) 32 / 8px stretch;
+  background: linear-gradient(#f7dc8c, #e8bd57 30%, #d4a141 50%, #c18c30 58%, #d8a947 82%, #a8721f) border-box; filter: drop-shadow(0 0 10px rgba(255,200,90,0.25)); }
+#scrStore .stBuyP { display: flex; align-items: center; gap: 5px; }
+#scrStore .stBuyP b { font: 700 21px/1 var(--numfont); letter-spacing: 0; }
+#scrStore .stBuy.sell { color: #fff0e0; text-shadow: 0 1px 0 #000; }
+#scrStore .stBuy.sell::before { border-image-source: var(--plate-rim-red); background: var(--plate-face-red) border-box; filter: none; }
+#scrStore .stBuy.armed::before { filter: drop-shadow(0 0 12px rgba(255,220,120,0.6)); }
+#scrStore .stBuy.short { color: #f0d9c8; text-shadow: 0 1px 0 #000; }
 #scrStore .stBuy.short::before { border-image-source: var(--plate-rim-redq); background: var(--plate-face-solid); filter: none; }
 #scrStore .stBuy.short .stBuyP b { color: #ff8a6a; }
 #scrStore .stBuy.busy { opacity: 0.8; }
+#scrStore .stBuy:active, #scrStore .stPut:active { translate: 0 2px; }
+#scrStore .stPut { flex: 0 1 auto; padding: 6px 18px; color: #f3e2b4; text-shadow: 0 1px 0 #000; }
+#scrStore .stPut::before { border-image: var(--plate-rim) 32 / 8px stretch; background: var(--plate-face-solid); }
 #scrStore .stMsg { margin: 0; min-height: 17px; font: 600 15px/1.2 var(--numfont); text-align: center; color: #f4e3bd; text-shadow: 0 1px 0 #000; }
+#scrStore .stMsg:empty { display: none; }
 #scrStore .stMsg[data-k="short"], #scrStore .stMsg[data-k="warn"] { color: #ff9d7f; }
 #scrStore .stMsg[data-k="ask"] { color: #ffe08a; }
-#scrStore .stOwn { margin: 0; font: 700 11px/1 var(--menufont); letter-spacing: 1.6px; text-transform: uppercase; color: rgba(236,220,186,0.66); }
+#scrStore .stOwn { margin: 0; font: 600 13px/1.2 var(--numfont); color: rgba(236,220,186,0.74); text-align: center; text-shadow: 0 1px 0 #000; }
 .ccard.stFlying { will-change: transform; filter: drop-shadow(0 8px 14px rgba(0,0,0,0.6)); }
-/* a short window (a phone on its side): the frame starts higher */
-@media (max-height: 600px) {
-  #scrStore .stFrame { margin-top: 6px; }
-  #scrStore .stHead { padding-top: calc(var(--safe-top, 0px) + 4px); padding-bottom: 4px; }
-}
-/* a phone: the frame gives the wares its width, so a 390px phone shelves
-   three cards a row at whole device pixels */
-@media (max-width: 440px) {
-  #scrStore .stFrame { width: calc(100% - 10px); margin-left: 5px; margin-right: 5px; padding: 10px 9px; }
-  #scrStore .stPane { padding: 0 0 14px; }
-  #scrStore .stC { width: 36px; height: 36px; }
-}
-@media (max-width: 380px) {
-  #scrStore .stTitle h2 { font-size: 22px; }
-  #scrStore .stPurseT b { font-size: 26px; }
-}
-@media (min-width: 900px) {
-  #scrStore .stFrame { width: calc(100% - 48px); padding: 14px; margin-bottom: calc(env(safe-area-inset-bottom, 0px) + 24px); }
-  #scrStore .stC { width: 58px; height: 58px; }
-  #scrStore .stHead { padding-left: 24px; padding-right: 24px; }
-  #scrStore .stTitle h2 { font-size: 32px; }
-}
 @media (prefers-reduced-motion: reduce) { #scrStore .stItem .ccard { transition: none; } }
 `;
 window.Store = Store;
