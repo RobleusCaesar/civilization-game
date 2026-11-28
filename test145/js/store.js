@@ -58,12 +58,16 @@ const Store = {
   NAME: 'Old Bran',
   /* the paintings' own geometry, in MASTER pixels: the counter's top edge
      (`top`), the foot of its front lip (`front`), where the trader stands
-     (`tx`, his middle). TR is his picture: 256px square at the hut's own
-     density, his feet on row `foot`, his crown on row `head`, half his
-     width `half`. */
+     (`tx`, his middle), and where the counter's front may be carried on
+     down the window (`cut`: the row its planks are cut at, `tile`: the
+     height of counter-{wide,tall}.png, a band of those planks and its mirror,
+     so it repeats without a seam — build 226, the operator: "Make sure the
+     shop keepers table goes to the bottom of the screen"). TR is his picture:
+     256px square at the hut's own density, his feet on row `foot`, his crown
+     on row `head`, half his width `half`. */
   GEO: {
-    wide: { w: 688, h: 384, top: 280, front: 326, tx: 250 },
-    tall: { w: 384, h: 688, top: 457, front: 507, tx: 178 },
+    wide: { w: 688, h: 384, top: 280, front: 326, tx: 250, cut: 352, tile: 64 },
+    tall: { w: 384, h: 688, top: 457, front: 507, tx: 178, cut: 560, tile: 160 },
   },
   TR: { size: 256, foot: 208, head: 15, half: 106, face: 46 },
 
@@ -103,8 +107,8 @@ const Store = {
     const scr = document.createElement('div');
     scr.className = 'screen';
     scr.id = 'scrStore';
+    scr.style.setProperty('--plank', `url("${this._art('plank.png')}")`);
     const C = window.SettingsPage && SettingsPage.cornerSvg ? SettingsPage : null;
-    const deck = this._deckSvg('stModeI');
     scr.innerHTML =
       '<div class="mkScene" aria-hidden="true">' +
         '<img class="mkBg" alt="" decoding="async">' +
@@ -122,16 +126,16 @@ const Store = {
       '</header>' +
       '<div class="mkSay" role="status" aria-live="polite"><b class="mkWho"></b><span class="mkSayT"></span></div>' +
       '<div class="mkOffers">' +
-        `<button class="mkOffer lit" type="button" data-act="mode" data-mode="buy"><i class="mkOi">${window.Gold ? Gold.mark(28) : ''}</i><span><b>Buy</b><small>Cards for gold</small></span></button>` +
-        `<button class="mkOffer" type="button" data-act="mode" data-mode="sell"><i class="mkOi"><img src="${window.Gold ? Gold.art('purse') : ''}" alt=""></i><span><b>Sell</b><small>Gold for your cards</small></span></button>` +
-        `<button class="mkOffer" type="button" data-act="mode" data-mode="own"><i class="mkOi">${this._deckSvg('mkDeckI')}</i><span><b>Your Deck</b><small class="mkFound"></small></span></button>` +
+        `<button class="mkOffer" type="button" data-act="mode" data-mode="buy"><i class="mkOi"><img src="${this._art('coins.png')}" alt=""></i><span><b>Buy</b><small>Cards for gold</small></span>${this.GO}</button>` +
+        `<button class="mkOffer" type="button" data-act="mode" data-mode="sell"><i class="mkOi"><img src="${window.Gold ? Gold.art('purse') : ''}" alt=""></i><span><b>Sell</b><small>Gold for your cards</small></span>${this.GO}</button>` +
+        `<button class="mkOffer" type="button" data-act="mode" data-mode="own"><i class="mkOi"><img src="${this._art('deck.png')}" alt=""></i><span><b>Your Deck</b><small class="mkFound"></small></span>${this.GO}</button>` +
       '</div>' +
       '<div class="stCase" hidden>' +
         (C ? [['tl', 0, 0], ['tr', 1, 0], ['bl', 0, 1], ['br', 1, 1]].map(([c, fx, fy]) => `<i class="stC ${c}">${C.cornerSvg('stc' + c, fx, fy)}</i>`).join('') : '') +
         '<div class="stModes" role="tablist">' +
-          `<button class="stMode" type="button" role="tab" data-act="mode" data-mode="buy">${window.Gold ? Gold.mark(16) : ''}<span>Buy</span></button>` +
+          `<button class="stMode" type="button" role="tab" data-act="mode" data-mode="buy"><img src="${this._art('coins.png')}" alt=""><span>Buy</span></button>` +
           `<button class="stMode" type="button" role="tab" data-act="mode" data-mode="sell"><img src="${window.Gold ? Gold.art('purse') : ''}" alt=""><span>Sell</span></button>` +
-          `<button class="stMode" type="button" role="tab" data-act="mode" data-mode="own">${deck}<span>Deck</span></button>` +
+          `<button class="stMode" type="button" role="tab" data-act="mode" data-mode="own"><img src="${this._art('deck.png')}" alt=""><span><i class="stMy">Your </i>Deck</span></button>` +
         '</div>' +
         '<div class="stTiers"></div>' +
         '<div class="stPane"><div class="stShelves"></div><p class="stEmpty" hidden></p>' +
@@ -141,7 +145,7 @@ const Store = {
         '<div class="stLookCard" data-act="flip"></div>' +
         '<div class="stDeal">' +
           '<div class="stDealRow">' +
-            '<button class="stBuy" type="button" data-act="deal"><span class="stBuyL">Buy</span><span class="stBuyP"></span></button>' +
+            `<button class="stBuy" type="button" data-act="deal"><img class="stBuyI" src="${this._art('coins.png')}" alt=""><span class="stBuyL">Buy</span><span class="stBuyP"></span></button>` +
             '<button class="stPut" type="button" data-act="unlook">Put back</button>' +
           '</div>' +
           '<p class="stMsg" role="status" aria-live="polite"></p>' +
@@ -174,6 +178,17 @@ const Store = {
     return scr;
   },
   _art(n) { return `assets/ui/store/${n}?v=${(typeof CFG !== 'undefined' && CFG.ART_V) || 1}`; },
+  // the gold chevron at an offer's right end
+  GO: '<svg class="mkGo" viewBox="0 0 12 20" aria-hidden="true"><path d="M2.5 2.5 9.5 10l-7 7.5" fill="none" stroke="#2a1606" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/><path d="M2.5 2.5 9.5 10l-7 7.5" fill="none" stroke="#f2cd6a" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+  /* what the case and the offers must leave clear at the window's foot: the
+     phone's home bar (the safe area), and a test page's TEST BUILD badge */
+  _foot(H) {
+    const sb = (this.el && this.el.querySelector('.mkSb').offsetHeight) || 0;
+    let f = sb + 8;
+    const tb = document.getElementById('testBadge');
+    if (tb && tb.getClientRects().length && getComputedStyle(tb).display !== 'none') f = Math.max(f, H - tb.getBoundingClientRect().top + 6);
+    return Math.round(f);
+  },
   _deckSvg(cls) { return (window.DeckUI && DeckUI.deckIcon) ? DeckUI.deckIcon(cls) : ''; },
   _esc(s) { return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); },
 
@@ -262,7 +277,7 @@ const Store = {
       case 'holdsell': return `${nm}? I’ll give you <em>${g(Gold.sellPrice(id))} gold</em> for it.`;
       case 'holdown': { const n = Deck.count(id); return n === 1 ? `${nm}. You hold one.` : `${nm}. You hold ${n}.`; }
       case 'unknown': return 'Not found yet. Win it in battle, or buy one from me.';
-      case 'short': return `${g(x)} more gold, Chief. Win a few more fights.`;
+      case 'short': return 'Not enough gold yet, Chief. Win a few more fights.';
       case 'bought': return `${nm} is yours. A fine trade!`;
       case 'sold': return `${g(x)} gold for your ${nm}. A pleasure, Chief.`;
       default: return '';
@@ -291,7 +306,7 @@ const Store = {
       for (const img of el.querySelectorAll('.mkBg')) img.src = this._art(`hut-${key}.webp`);
     }
     const head = el.querySelector('.stHead').getBoundingClientRect().bottom;
-    const sb = el.querySelector('.mkSb').offsetHeight || 0;
+    const sb = el.querySelector('.mkSb').offsetHeight || 0, foot = this._foot(H);
     const browse = this._mode !== 'land';
     const offers = el.querySelector('.mkOffers'), box = el.querySelector('.stCase');
     let s, x0, y0, cb = null;
@@ -302,15 +317,16 @@ const Store = {
         s = Math.max(W / g.w, H / g.h);
         x0 = (W - g.w * s) / 2;
         y0 = (H - g.h * s) / 2;
-        const oh = offers.offsetHeight || 188;
-        const over = y0 + (g.front + 8) * s + oh + 14 + sb - H;
+        const oh = offers.offsetHeight || 220;
+        const over = y0 + (g.front + 8) * s + oh + 6 + foot - H;
         if (over > 0) y0 -= over;
       } else {
         s = W / g.w;
         x0 = 0;
         const C = Math.round(Math.min(H - 300, Math.max(H * 0.37, head + 10 + (T.foot - T.head + 4) * s)));
         y0 = C - g.top * s;
-        cb = { left: 0, right: 0, top: C, bottom: 0 };
+        // the case ends above the home bar, its gold trim whole; the counter runs on under it
+        cb = { left: 0, right: 0, top: C, bottom: foot };
       }
     } else {
       s = Math.max(W / g.w, H / g.h);
@@ -318,7 +334,7 @@ const Store = {
       if (!browse) {
         x0 = (W - g.w * s) / 2;
         const oh = offers.offsetHeight || 66, top = y0 + (g.front + 10) * s;
-        const room = H - sb - 12 - (top + oh), headTop = y0 + (g.top - T.foot + T.head) * s;
+        const room = H - foot - 4 - (top + oh), headTop = y0 + (g.top - T.foot + T.head) * s;
         if (room < 0) {
           const lift = Math.min(-room, Math.max(0, headTop - head - 4));
           y0 -= lift;
@@ -326,12 +342,12 @@ const Store = {
         }
       } else {
         const right = W >= 900 ? 24 : 12, cw = Math.round(Math.min(640, Math.max(360, W * 0.46)));
-        cb = { left: W - cw - right, right, top: head + 6, bottom: (W >= 900 ? 24 : 10) + sb };
+        cb = { left: W - cw - right, right, top: head + 6, bottom: Math.max((W >= 900 ? 24 : 10) + sb, foot) };
         x0 = Math.min(0, Math.max(W - g.w * s, cb.left / 2 - g.tx * s));
       }
       if (x0 === undefined) x0 = (W - g.w * s) / 2;
     }
-    this._geo = { s, x0, y0, g, W, H, head, sb, wide, cb };
+    this._geo = { s, x0, y0, g, W, H, head, sb, foot, wide, cb };
     // the hall
     const sc = el.querySelector('.mkScene');
     Object.assign(sc.style, { left: x0 + 'px', top: y0 + 'px', width: g.w * s + 'px', height: g.h * s + 'px' });
@@ -340,15 +356,20 @@ const Store = {
     const tr = el.querySelector('.mkTrader');
     Object.assign(tr.style, { left: (g.tx - T.size / 2) * s + 'px', top: (g.top - T.foot) * s + 'px', width: T.size * s + 'px', height: T.size * s + 'px' });
     el.querySelector('.mkOver').style.clipPath = `inset(${(g.top / g.h * 100).toFixed(3)}% 0 0 0)`;
-    const ext = el.querySelector('.mkExt'), bottom = y0 + g.h * s;
-    ext.style.top = g.h * s - 2 + 'px';
-    ext.style.height = Math.max(0, H - bottom + 4) + 'px';
+    // the counter carried on to the window's foot when the painting stops short of it:
+    // its own planks from `cut` down, a band and its mirror repeating (counter-{key}.png)
+    const ext = el.querySelector('.mkExt'), short = y0 + g.h * s < H - 0.5;
+    ext.hidden = !short;
+    if (short) {
+      Object.assign(ext.style, { top: g.cut * s + 'px', height: Math.ceil(H - (y0 + g.cut * s)) + 2 + 'px',
+        backgroundImage: `url("${this._art('counter-' + key + '.png')}")`, backgroundSize: `${g.w * s}px ${g.tile * s}px` });
+    }
     // the offers: on the counter's front, under him
     const cx = x0 + g.tx * s;
     if (!browse) {
       if (offers.classList.contains('side')) {
         const ow = offers.offsetWidth || 224, oh = offers.offsetHeight || 172;
-        Object.assign(offers.style, { left: Math.min(W - ow - 12, cx + T.half * s + 16) + 'px', top: Math.max(head + 6, (head + H - sb - oh) / 2) + 'px' });
+        Object.assign(offers.style, { left: Math.min(W - ow - 12, cx + T.half * s + 16) + 'px', top: Math.max(head + 6, (head + H - foot - oh) / 2) + 'px' });
       } else if (!wide) {
         Object.assign(offers.style, { left: '0px', top: y0 + (g.front + 8) * s + 'px' });
       } else {
@@ -442,17 +463,15 @@ const Store = {
     host.style.setProperty('--cw', g.w + 'px');
     let any = 0;
     for (const t of Deck.TIERS) {
-      const cards = this._cards(t), all = Deck.CATALOG.filter(c => c.tier === t.k);
-      const ps = all.map(c => Deck.price(c.id)).filter(p => p > 0), lo = ps.length ? Math.min(...ps) : 0;
-      const sub = m === 'buy' ? `${Gold.mark(11)}${Gold.fmt(lo)}` : m === 'sell' ? `${Gold.mark(11)}${Gold.fmt(Math.floor(lo * ((CFG.GOLD && CFG.GOLD.SELL) || 0.8) + 0.5))}`
-        : `${all.filter(c => Deck.count(c.id) > 0).length}/${all.length}`;
+      // a tier's tab is its gem and its name (build 226: its prices and counts were "too messy")
+      const cards = this._cards(t);
       const tb = document.createElement('button');
       tb.type = 'button';
       tb.className = 'stTier' + (cards.length ? '' : ' none');
       tb.dataset.act = 'tier';
       tb.dataset.tier = t.k;
       tb.style.setProperty('--tc', t.col);
-      tb.innerHTML = `<span class="stTn">${window.DeckUI && DeckUI.gemIcon ? DeckUI.gemIcon('stGem') : ''}${this._esc(t.name)}</span><em>${sub}</em>`;
+      tb.innerHTML = `<span class="stTn">${window.DeckUI && DeckUI.gemIcon ? DeckUI.gemIcon('stGem') : ''}${this._esc(t.name)}</span>`;
       tb.setAttribute('aria-label', `${t.name}: ${cards.length} ${cards.length === 1 ? 'card' : 'cards'}`);
       tiers.appendChild(tb);
       if (!cards.length) continue;
@@ -471,7 +490,8 @@ const Store = {
         b.dataset.card = c.id;
         b.dataset.act = 'look';
         b.appendChild(Deck.face(c.id, unknown ? { w: g.w, unknown: true } : { w: g.w }));
-        if (m === 'buy') b.insertAdjacentHTML('beforeend', `<span class="stTag">${Gold.mark(15)}<b class="stP"></b><small class="stMore"></small></span>`);
+        // under a ware its price alone, red when the purse is short of it (build 226)
+        if (m === 'buy') b.insertAdjacentHTML('beforeend', `<span class="stTag">${Gold.mark(15)}<b class="stP"></b></span>`);
         else if (m === 'sell') b.insertAdjacentHTML('beforeend', `<span class="stTag">${Gold.mark(15)}<b class="stP"></b><i class="stHave"></i></span>`);
         else b.insertAdjacentHTML('beforeend', `<span class="stTag own"><i class="stHave"></i></span>`);
         wares.appendChild(b);
@@ -499,8 +519,7 @@ const Store = {
         const p = Deck.price(id), short = p > gold;
         b.classList.toggle('short', short);
         b.querySelector('.stP').textContent = Gold.fmt(p);
-        b.querySelector('.stMore').textContent = short ? Gold.fmt(p - gold) + ' more' : '';
-        b.setAttribute('aria-label', `${c.name}, ${Gold.fmt(p)} gold` + (short ? `, ${Gold.fmt(p - gold)} more gold needed` : ''));
+        b.setAttribute('aria-label', `${c.name}, ${Gold.fmt(p)} gold` + (short ? ', more than your purse holds' : ''));
       } else if (m === 'sell') {
         const p = Gold.sellPrice(id);
         b.querySelector('.stP').textContent = Gold.fmt(p);
@@ -542,7 +561,9 @@ const Store = {
     // on a phone it may rise over the counter, never over his face
     const chin = y0 + (g.top - T.foot + T.head + 96) * s;
     const rise = wide ? 0 : Math.max(0, Math.min(cb.top - head - 8, cb.top - chin - 6));
-    return { left: cb.left, right: cb.right, top: cb.top - rise, bottom: cb.bottom, w: W - cb.left - cb.right, h: H - cb.bottom - (cb.top - rise) };
+    // and down over the case's own foot, never into the home bar
+    const bottom = wide ? cb.bottom : Math.max(G.sb || 0, cb.bottom - 8);
+    return { left: cb.left, right: cb.right, top: cb.top - rise, bottom, w: W - cb.left - cb.right, h: H - bottom - (cb.top - rise) };
   },
   // a short case (a phone on its side) stands the deal beside the card, not under it
   _lookRow(B) { return !!B && B.h < 440 && B.w >= 360; },
@@ -625,6 +646,8 @@ const Store = {
     const gold = this._anim ? this._shown : Gold.balance(), n = Deck.count(id), armed = !!this._armedAt;
     btn.hidden = m === 'own';
     btn.classList.toggle('sell', m === 'sell');
+    const ico = btn.querySelector('.stBuyI'), want = m === 'sell' ? Gold.art('purse') : this._art('coins.png');
+    if (ico && ico.getAttribute('src') !== want) ico.setAttribute('src', want);
     L.querySelector('.stPut').textContent = m === 'own' ? 'Back to the deck' : 'Put back';
     if (m === 'buy') {
       const p = Deck.price(id), short = p > gold;
@@ -634,7 +657,7 @@ const Store = {
       btn.querySelector('.stBuyP').innerHTML = `${Gold.mark(18)}<b>${Gold.fmt(p)}</b>`;
       btn.setAttribute('aria-label', `Buy ${Deck.card(id).name} for ${Gold.fmt(p)} gold`);
       L.querySelector('.stOwn').textContent = n ? (n === 1 ? 'One already in your deck' : n + ' already in your deck') : 'None in your deck yet';
-      if (short && !this._anim && !L.querySelector('.stMsg').textContent) this._msg(Gold.fmt(p - gold) + ' more gold needed', 'short');
+      if (short && !this._anim && !L.querySelector('.stMsg').textContent) this._msg('Not enough gold yet', 'short');
     } else if (m === 'sell') {
       const p = Gold.sellPrice(id);
       btn.classList.remove('short');
@@ -670,7 +693,7 @@ const Store = {
     // SHORT: the button answers — it shakes and says what is missing
     if (p > gold) {
       this._shake(btn);
-      this._msg(Gold.fmt(p - gold) + ' more gold needed. Finish games to earn more.', 'short');
+      this._msg('Not enough gold yet. Finish games to earn more.', 'short');
       this.say(this._line('short', id, p - gold));
       this._cue('no');
       Deck.track('store', { ev: 'short', card: id, tier: Deck.card(id).tier, price: p, gold, need: p - gold });
@@ -873,8 +896,9 @@ Store.CSS = `
 #scrStore .mkScene img { position: absolute; display: block; max-width: none; image-rendering: auto; }
 #scrStore .mkScene.px img { image-rendering: pixelated; }
 #scrStore .mkBg { left: 0; top: 0; width: 100%; height: 100%; }
-#scrStore .mkExt { position: absolute; left: 0; width: 100%; display: block;
-  background: repeating-linear-gradient(90deg, rgba(0,0,0,0) 0 54px, #221a21 54px 56px, #4e3529 56px 57px), linear-gradient(#3a2626, #2a1c1e 60%, #170f12); }
+#scrStore .mkExt { position: absolute; left: 0; width: 100%; display: block; background-color: #2a1a12; background-repeat: repeat-y; background-position: 0 0; }
+#scrStore .mkExt[hidden] { display: none; }
+#scrStore .mkScene.px .mkExt { image-rendering: pixelated; }
 #scrStore .mkSb { position: absolute; left: 0; bottom: 0; width: 1px; height: env(safe-area-inset-bottom, 0px); pointer-events: none; visibility: hidden; }
 /* THE HEADER: back, the name, the purse */
 #scrStore .stHead { position: absolute; left: 0; right: 0; top: 0; z-index: 6; display: flex; align-items: center; gap: 10px; box-sizing: border-box;
@@ -926,32 +950,40 @@ Store.CSS = `
 #scrStore .mkSay[data-tail="r"]::after { right: -8px; top: var(--ty); border-bottom: 0; border-left: 0; transform: rotate(45deg); background: #e8d6ad; }
 @media (min-width: 900px) { #scrStore .mkSay { font-size: 18px; padding: 10px 14px 12px; } #scrStore .mkWho { font-size: 10px; } }
 #scrStore .mkSay.narrow { font-size: 13.5px; padding: 7px 9px 8px; }
-/* THE OFFERS: signs on the counter's front */
-#scrStore .mkOffers { position: absolute; z-index: 3; display: flex; gap: 14px; filter: drop-shadow(0 6px 8px rgba(0,0,0,0.6)); }
+/* THE OFFERS: wooden signs on the counter's front (build 226 — the operator's mockup:
+   a plank with iron corner brackets, a picture, the word and a gold chevron) */
+#scrStore .mkOffers { position: absolute; z-index: 3; display: flex; gap: 14px; filter: drop-shadow(0 5px 6px rgba(0,0,0,0.65)); }
 #scrStore .mkOffers[hidden] { display: none; }
 #scrStore .mkOffers.col { right: 0; flex-direction: column; align-items: center; gap: 10px; }
 #scrStore .mkOffers.side { flex-direction: column; gap: 8px; }
-#scrStore .mkOffer { position: relative; isolation: isolate; display: flex; align-items: center; gap: 12px; width: 226px; height: 64px; padding: 0 18px 0 12px;
-  border: 0; background: none; cursor: pointer; text-align: left; color: #f3e2b4; -webkit-appearance: none; appearance: none; -webkit-tap-highlight-color: transparent; }
-#scrStore .mkOffers.col .mkOffer { width: min(320px, calc(100vw - 48px)); height: 56px; }
-#scrStore .mkOffers.side .mkOffer { width: 220px; height: 52px; }
-#scrStore .mkOffer::before { content: ''; position: absolute; inset: 0; z-index: -1; clip-path: var(--hud-chamfer);
-  border: 8px solid transparent; border-image: var(--plate-rim) 32 / 8px stretch;
-  background: linear-gradient(rgba(255,240,200,0.07), rgba(255,240,200,0) 12px) border-box, linear-gradient(#41331f, #261c10) border-box; }
-#scrStore .mkOffer.lit { color: #fff0bf; }
-#scrStore .mkOffer.lit::before { border-image-source: var(--plate-rim-lit); background: var(--plate-face-lit); }
+#scrStore .mkOffer { position: relative; isolation: isolate; display: flex; align-items: center; gap: 12px; width: 296px; height: 66px; padding: 0 20px 0 24px;
+  border: 0; background: none; cursor: pointer; text-align: left; color: #f6e6bd; -webkit-appearance: none; appearance: none; -webkit-tap-highlight-color: transparent;
+  --pw: 53px; }
+#scrStore .mkOffers.col .mkOffer { width: min(340px, calc(100vw - 40px)); height: 66px; }
+#scrStore .mkOffers.side .mkOffer { width: 252px; height: 54px; --pw: 43px; padding: 0 16px 0 20px; }
+@media (max-width: 360px) { #scrStore .mkOffers.col .mkOffer b { font-size: 19px; letter-spacing: 1.2px; } #scrStore .mkOffers.col .mkOffer { padding: 0 16px 0 20px; } }
+/* the plank: its ends (the iron brackets) kept, its middle drawn out to the sign's width */
+#scrStore .mkOffer::before { content: ''; position: absolute; inset: 0; z-index: -1; border-style: solid; border-width: 0 var(--pw); border-color: transparent;
+  border-image: var(--plank) 0 64 fill / 0 var(--pw) stretch; }
+#scrStore .mkOffer::after { content: ''; position: absolute; inset: 0; z-index: -1; pointer-events: none; opacity: 0; transition: opacity 120ms ease-out;
+  background: radial-gradient(ellipse 70% 90% at 45% 50%, rgba(255,214,130,0.28), rgba(255,214,130,0) 75%); }
 #scrStore .mkOffer:active { translate: 0 2px; }
-@media (hover: hover) { #scrStore .mkOffer:hover { filter: brightness(1.12); } }
+#scrStore .mkOffer:active::after { opacity: 1; }
+@media (hover: hover) { #scrStore .mkOffer:hover::after { opacity: 1; } #scrStore .mkOffer:hover .mkGo { translate: 3px 0; } }
 #scrStore .mkOffer:focus-visible { outline: 2px solid #f2cf73; outline-offset: 3px; }
-#scrStore .mkOi { width: 38px; height: 38px; flex: 0 0 auto; display: flex; align-items: center; justify-content: center; }
-#scrStore .mkOi img { width: 36px; height: 36px; image-rendering: pixelated; }
-#scrStore .mkOi svg { width: 30px; height: 34px; }
-#scrStore .mkOffer > span { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
-#scrStore .mkOffer b { font: 800 19px/1 var(--menufont); letter-spacing: 1.5px; text-transform: uppercase; text-shadow: 0 1px 0 #000; white-space: nowrap; }
-#scrStore .mkOffer small { font: 600 13px/1 var(--numfont); color: #d8c597; text-shadow: 0 1px 0 #000; white-space: nowrap; }
+#scrStore .mkOi { width: 46px; height: 46px; flex: 0 0 auto; display: flex; align-items: center; justify-content: center; }
+#scrStore .mkOi img { width: 46px; height: 46px; filter: drop-shadow(0 2px 1px rgba(0,0,0,0.55)); }
+#scrStore .mkOffers.side .mkOi, #scrStore .mkOffers.side .mkOi img { width: 38px; height: 38px; }
+#scrStore .mkOffer > span { flex: 1 1 auto; display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+#scrStore .mkOffer b { font: 800 22px/1 var(--menufont); letter-spacing: 1.6px; text-transform: uppercase; white-space: nowrap; color: #fbecc4;
+  text-shadow: 0 2px 0 #2a1606, 0 0 1px #2a1606, 1px 0 0 #2a1606, -1px 0 0 #2a1606; }
+#scrStore .mkOffer small { font: 600 14.5px/1 var(--numfont); color: #f0dcae; text-shadow: 0 1px 0 #2a1606, 0 0 2px #2a1606; white-space: nowrap; }
+#scrStore .mkOffers.side .mkOffer b { font-size: 18px; }
+#scrStore .mkOffers.side .mkOffer small { font-size: 13px; }
+#scrStore .mkGo { width: 12px; height: 20px; flex: 0 0 auto; transition: translate 120ms ease-out; filter: drop-shadow(0 1px 0 rgba(0,0,0,0.5)); }
 /* THE CASE: the album's black panel in the settings page's carved gold rim */
 #scrStore .stCase { position: absolute; z-index: 2; display: flex; flex-direction: column; box-sizing: border-box;
-  padding: 10px 8px calc(env(safe-area-inset-bottom, 0px) + 6px);
+  padding: 10px 8px 8px;
   background:
     radial-gradient(ellipse 90% 70% at 50% 35%, rgba(64,40,20,0.34), rgba(0,0,0,0) 70%),
     repeating-linear-gradient(45deg, rgba(255,255,255,0.012) 0 2px, rgba(0,0,0,0.02) 2px 4px),
@@ -967,30 +999,40 @@ Store.CSS = `
 #scrStore .stC.tr { right: -6px; top: -6px; transform: scaleX(-1); }
 #scrStore .stC.bl { left: -6px; bottom: -6px; transform: scaleY(-1); }
 #scrStore .stC.br { right: -6px; bottom: -6px; transform: scale(-1, -1); }
+/* a phone's case spans the window: its ornaments stand inside it, whole */
+#scrStore .stCase:not(.side) .stC.tl, #scrStore .stCase:not(.side) .stC.bl { left: 0; }
+#scrStore .stCase:not(.side) .stC.tr, #scrStore .stCase:not(.side) .stC.br { right: 0; }
+#scrStore .stCase:not(.side) .stC.bl, #scrStore .stCase:not(.side) .stC.br { bottom: 0; }
 @media (min-width: 900px) { #scrStore .stC { width: 52px; height: 52px; } }
-#scrStore .stModes { flex: 0 0 auto; display: flex; gap: 6px; padding: 2px 4px 8px; }
+#scrStore .stModes { flex: 0 0 auto; display: flex; gap: 7px; padding: 3px 4px 10px; }
 #scrStore .stMode, #scrStore .stTier { position: relative; isolation: isolate; border: 0; background: none; cursor: pointer; -webkit-appearance: none; appearance: none;
   -webkit-tap-highlight-color: transparent; color: #d9caa6; }
-#scrStore .stMode { flex: 1 1 0; min-width: 0; height: 44px; display: flex; align-items: center; justify-content: center; gap: 7px;
-  font: 800 13px/1 var(--menufont); letter-spacing: 1px; text-transform: uppercase; }
+#scrStore .stMode { flex: 1 1 0; min-width: 0; height: 50px; display: flex; align-items: center; justify-content: center; gap: 8px;
+  font: 800 15px/1 var(--menufont); letter-spacing: 1.2px; text-transform: uppercase; white-space: nowrap; text-shadow: 0 1px 0 #000; }
 #scrStore .stMode::before, #scrStore .stTier::before { content: ''; position: absolute; inset: 0; z-index: -1; clip-path: var(--hud-chamfer);
   border: 8px solid transparent; border-image: var(--plate-rim) 32 / 8px stretch;
   background: linear-gradient(rgba(255,240,200,0.06), rgba(255,240,200,0) 10px) border-box, linear-gradient(#3b3020, #241c11) border-box; }
 #scrStore .stMode.on, #scrStore .stTier.on { color: #fff0bf; }
 #scrStore .stMode.on::before, #scrStore .stTier.on::before { border-image-source: var(--plate-rim-lit); background: var(--plate-face-lit); }
-#scrStore .stMode img { width: 22px; height: 22px; image-rendering: pixelated; }
-#scrStore .stModeI { width: 18px; height: 20px; }
+#scrStore .stMode img { width: 30px; height: 30px; flex: 0 0 auto; filter: drop-shadow(0 1px 1px rgba(0,0,0,0.7)); }
+#scrStore .stMode.on { filter: drop-shadow(0 0 7px rgba(255,196,90,0.55)); }
+#scrStore .stMode:active { translate: 0 2px; }
+@media (hover: hover) { #scrStore .stMode:not(.on):hover { color: #f6e6bd; filter: brightness(1.12); } }
+/* "Your Deck" where the case has the room, "Deck" where it has not */
+#scrStore .stMy { font-style: normal; display: none; }
+#scrStore .stCase.roomy .stMy { display: inline; }
+#scrStore .stCase:not(.roomy) .stMode { font-size: 14px; gap: 6px; }
+#scrStore .stCase:not(.roomy) .stMode img { width: 27px; height: 27px; }
 #scrStore .stTiers { flex: 0 0 auto; display: flex; gap: 5px; padding: 0 4px 9px; border-bottom: 1px solid rgba(214,170,74,0.22); }
-#scrStore .stTier { flex: 1 1 0; min-width: 0; height: 42px; padding: 0 2px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px;
-  font: 800 9px/1 var(--menufont); letter-spacing: 0.4px; text-transform: uppercase; color: #cfbf9a; }
+#scrStore .stTier { flex: 1 1 0; min-width: 0; height: 36px; padding: 0 2px; display: flex; align-items: center; justify-content: center;
+  font: 800 9.5px/1 var(--menufont); letter-spacing: 0.4px; text-transform: uppercase; color: #cfbf9a; }
 #scrStore .stTier::before { border-width: 6px; border-image: var(--plate-rim-thin) 32 / 6px stretch; background: linear-gradient(#2a2015, #17110a) border-box; }
 #scrStore .stTier.none { opacity: 0.38; cursor: default; }
 #scrStore .stTn { display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; color: var(--tc); text-shadow: 0 1px 0 #000; }
 #scrStore .stTier.on .stTn { color: #fff0bf; }
 #scrStore .stGem { width: 11px; height: 11px; color: var(--tc); flex: 0 0 auto; filter: drop-shadow(0 1px 0 #000); }
-#scrStore .stTier em { display: inline-flex; align-items: center; gap: 2px; font: 700 11px/1 var(--numfont); font-style: normal; letter-spacing: 0; color: #f6dc8c; white-space: nowrap; }
-#scrStore .stCase.roomy .stTier { flex-direction: row; gap: 6px; font-size: 10.5px; }
-#scrStore .stCase.roomy .stTier em { font-size: 12.5px; }
+#scrStore .stCase.roomy .stTier { height: 38px; font-size: 11px; letter-spacing: 0.8px; }
+#scrStore .stCase.roomy .stGem { width: 12px; height: 12px; }
 #scrStore .stPane { position: relative; flex: 1 1 auto; min-height: 0; overflow-y: auto; overflow-x: hidden; -webkit-overflow-scrolling: touch; touch-action: pan-y;
   overscroll-behavior: contain; padding: 0 0 10px; scrollbar-width: thin; scrollbar-color: #8a6420 transparent; }
 #scrStore .stShelves { width: 100%; }
@@ -1004,18 +1046,15 @@ Store.CSS = `
 @media (hover: hover) { #scrStore .stItem:hover .ccard { translate: 0 -3px; filter: drop-shadow(0 7px 9px rgba(0,0,0,0.75)) drop-shadow(0 0 8px rgba(255,210,110,0.25)); } }
 #scrStore .stItem:focus-visible { outline: 2px solid #f2cf73; outline-offset: 3px; }
 #scrStore .stItem.unknown { cursor: default; }
-#scrStore .stTag { position: relative; isolation: isolate; display: flex; align-items: center; justify-content: center; flex-wrap: wrap; column-gap: 4px; row-gap: 0;
-  min-width: 70px; padding: 4px 10px 5px; }
+#scrStore .stTag { position: relative; isolation: isolate; display: flex; align-items: center; justify-content: center; gap: 5px;
+  box-sizing: border-box; min-width: min(78%, 120px); height: 30px; padding: 0 10px; margin-top: -1px; }
 #scrStore .stTag::before { content: ''; position: absolute; inset: 0; z-index: -1; clip-path: var(--hud-chamfer);
   border: 6px solid transparent; border-image: var(--plate-rim-thin) 32 / 6px stretch; background: linear-gradient(#2c2115, #17100a) border-box; }
-#scrStore .stP { font: 700 16px/1 var(--numfont); color: #ffe7a8; text-shadow: 0 1px 0 #000; font-variant-numeric: tabular-nums; }
+#scrStore .stP { font: 700 17px/1 var(--numfont); color: #ffe7a8; text-shadow: 0 1px 0 #000; font-variant-numeric: tabular-nums; }
 #scrStore .stHave { font: 700 12.5px/1 var(--numfont); font-style: normal; color: #d6c8a4; text-shadow: 0 1px 0 #000; margin-left: 3px; }
 #scrStore .stTag.own .stHave { margin: 0; color: #f3e2b4; }
 #scrStore .stItem.unknown .stTag.own .stHave { font: 700 9px/1 var(--menufont); letter-spacing: 1px; text-transform: uppercase; color: #8d7f66; }
-#scrStore .stMore { flex: 0 0 100%; text-align: center; font: 700 10.5px/1.15 var(--menufont); letter-spacing: .6px; color: #ff9d7f; text-shadow: 0 1px 0 #000; }
-#scrStore .stMore:empty { display: none; }
-#scrStore .stItem.short .stP { color: #ff8a6a; }
-#scrStore .stItem.short .stTag::before { border-image-source: var(--plate-rim-redq); }
+#scrStore .stItem.short .stP { color: #ff6f52; }
 #scrStore .stEmpty { margin: 26px 16px; text-align: center; font: italic 500 16px/1.35 var(--numfont); color: rgba(236,220,186,0.74); }
 #scrStore .stEmpty[hidden] { display: none; }
 #scrStore .stHow { display: block; margin: 14px auto 6px; padding: 8px 14px; border: 0; background: none; cursor: pointer;
@@ -1025,7 +1064,7 @@ Store.CSS = `
 /* A CARD HELD UP, over the case */
 #scrStore .stCase.holding > .stModes, #scrStore .stCase.holding > .stTiers, #scrStore .stCase.holding > .stPane { filter: brightness(0.26) saturate(0.7); }
 #scrStore .stLook { position: absolute; z-index: 5; display: flex; flex-direction: column; align-items: center; justify-content: flex-start; gap: 12px;
-  padding: 6px 12px calc(env(safe-area-inset-bottom, 0px) + 8px); box-sizing: border-box; }
+  padding: 6px 12px 8px; box-sizing: border-box; }
 #scrStore .stLook[hidden] { display: none; }
 #scrStore .stLook.row { flex-direction: row; justify-content: center; align-items: center; gap: 14px; padding-top: 8px; }
 #scrStore .stLook.row .stDeal { width: 176px; flex: 0 0 auto; }
@@ -1037,7 +1076,10 @@ Store.CSS = `
 #scrStore .stBuy, #scrStore .stPut { position: relative; isolation: isolate; min-height: 50px; border: 0; background: none; cursor: pointer;
   display: flex; align-items: center; justify-content: center; -webkit-appearance: none; appearance: none; -webkit-tap-highlight-color: transparent;
   font: 800 16px/1 var(--menufont); letter-spacing: 1.8px; text-transform: uppercase; }
-#scrStore .stBuy { flex: 1 1 auto; max-width: 230px; gap: 10px; padding: 6px 18px; color: #2c1604; text-shadow: 0 1px 0 rgba(255,240,200,0.5); }
+#scrStore .stBuy { flex: 1 1 auto; max-width: 250px; min-height: 56px; gap: 9px; padding: 6px 18px 6px 12px; color: #2c1604; text-shadow: 0 1px 0 rgba(255,240,200,0.5); }
+#scrStore .stBuyI { width: 34px; height: 34px; flex: 0 0 auto; filter: drop-shadow(0 1px 1px rgba(0,0,0,0.5)); }
+#scrStore .stBuy.short .stBuyI { filter: grayscale(0.6) brightness(0.8); }
+#scrStore .stBuyL { letter-spacing: 2px; }
 #scrStore .stBuy[hidden] { display: none; }
 #scrStore .stBuy::before, #scrStore .stPut::before { content: ''; position: absolute; inset: 0; z-index: -1; clip-path: var(--hud-chamfer); border: 8px solid transparent; }
 #scrStore .stBuy::before { border-image: var(--plate-rim-gold) 32 / 8px stretch;
@@ -1052,7 +1094,7 @@ Store.CSS = `
 #scrStore .stBuy.short .stBuyP b { color: #ff8a6a; }
 #scrStore .stBuy.busy { opacity: 0.8; }
 #scrStore .stBuy:active, #scrStore .stPut:active { translate: 0 2px; }
-#scrStore .stPut { flex: 0 1 auto; padding: 6px 18px; color: #f3e2b4; text-shadow: 0 1px 0 #000; }
+#scrStore .stPut { flex: 0 1 auto; min-height: 56px; padding: 6px 18px; color: #f3e2b4; text-shadow: 0 1px 0 #000; }
 #scrStore .stPut::before { border-image: var(--plate-rim) 32 / 8px stretch; background: var(--plate-face-solid); }
 #scrStore .stMsg { margin: 0; min-height: 17px; font: 600 15px/1.2 var(--numfont); text-align: center; color: #f4e3bd; text-shadow: 0 1px 0 #000; }
 #scrStore .stMsg:empty { display: none; }
