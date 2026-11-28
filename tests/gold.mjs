@@ -814,6 +814,15 @@ const MOCK = `
     const seam = ex.hidden ? 0 : Math.abs(box(ex).top - (G.y0 + G.g.cut * G.s));
     const offersB = box(document.querySelector('#scrStore .mkOffers')).bottom;
     const out = { sb, H, footLand: foot(), seam, offersB };
+    /* build 229 — the operator's mockup: "now you can't read the small text … recreate this
+       look": cream letters on a dark board, the clan's cloth behind the column, a heap of
+       gold on the counter, the plinth at the foot */
+    const lum = e => { const c = getComputedStyle(e).color.match(/[\d.]+/g).map(Number); return (0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2]) / 255; };
+    out.ink = [...document.querySelectorAll('#scrStore .mkOffer b, #scrStore .mkOffer small')].map(lum);
+    out.banners = [...document.querySelectorAll('#scrStore .mkBanner')].filter(e => e.getClientRects().length && box(e).height > 60).length;
+    const pile = document.querySelector('#scrStore .mkPile'), pl = document.querySelector('#scrStore .mkPlinth');
+    out.pile = !pile.hidden && box(pile).width > 30 && box(pile).bottom <= offersB;
+    out.plinth = Math.abs(box(pl).bottom - H) < 1 && box(pl).height >= 12 && offersB <= box(pl).top;
     Store.setMode('buy');
     await new Promise(res => setTimeout(res, 120));
     await Promise.race([Promise.all(document.getAnimations().map(a => a.finished.catch(() => {}))), new Promise(res => setTimeout(res, 1500))]);
@@ -855,6 +864,9 @@ const MOCK = `
   ck('theCounterRunsToTheFootAndTheCaseEndsAboveTheHomeBar',
     inset && r.sb === 34 && r.footLand >= r.H - 1 && r.footBuy >= r.H - 1 && r.seam < 1.5 && r.offersB <= r.H - r.sb && r.caseB <= r.H - r.sb - 6 && r.caseB >= r.H - r.sb - 20 && r.corners,
     `home bar ${inset ? r.sb : 'not emulated'}px; the counter to ${Math.round(r.footLand)} / ${Math.round(r.footBuy)} of ${r.H} (seam ${r.seam.toFixed(2)}px); the offers end ${Math.round(r.offersB)}; the case ends ${Math.round(r.caseB)}, its ornaments whole ${r.corners}`);
+  ck('andTheSignsAreTheMockupsCreamOnDarkWood',
+    r.ink.length === 6 && r.ink.every(l => l > 0.7) && r.banners === 2 && r.pile && r.plinth,
+    `the words' lightness ${r.ink.map(l => l.toFixed(2)).join('/')}; ${r.banners} banners behind the column; a heap on the counter ${r.pile}; the plinth at the foot, under the offers ${r.plinth}`);
   ck('aWareWearsItsPriceAloneRedWhenShort',
     r.more === 0 && r.tagWords && JSON.stringify(r.tiers) === JSON.stringify(r.names) && plain(r.cheap) && red(r.dear),
     `${r.more} "more" lines, tags only a price ${r.tagWords}; tier tabs ${r.tiers.join('/')}; an affordable price rgb(${r.cheap}), a dear one rgb(${r.dear})`);

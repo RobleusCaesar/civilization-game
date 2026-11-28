@@ -29,13 +29,18 @@ const Screens = {
     // it would sit on the build menu, so a game hides it
     if (window.Backend && Backend.testSlot && Backend.testSlot()) {
       const st = document.createElement('style');
-      st.textContent = 'body.ingame #testBadge{display:none}';
+      // a small wooden plaque with a gold diamond at each end (the operator's Marketplace mockup)
+      st.textContent = 'body.ingame #testBadge{display:none}' +
+        '#testBadge{position:fixed;left:50%;bottom:calc(env(safe-area-inset-bottom, 0px) + 4px);transform:translateX(-50%);z-index:99;' +
+        'pointer-events:none;font:700 10.5px/1 Cinzel,Georgia,serif;letter-spacing:2px;color:#f2dca2;white-space:nowrap;' +
+        'padding:4px 20px 4px 21px;border-radius:5px;border:1px solid #c8973f;background:linear-gradient(#6e3c1d,#4a2511);' +
+        'box-shadow:0 0 0 1px #1c0d05,inset 0 1px 0 rgba(255,220,160,0.25),0 2px 4px rgba(0,0,0,0.6);text-shadow:0 1px 0 #1c0d05}' +
+        '#testBadge::before,#testBadge::after{content:"";position:absolute;top:50%;width:5px;height:5px;margin-top:-2.5px;' +
+        'background:#e8bf5e;transform:rotate(45deg);box-shadow:0 0 0 1px #2a1406}' +
+        '#testBadge::before{left:7px}#testBadge::after{right:7px}';
       document.head.appendChild(st);
       const tb = document.createElement('div');
       tb.id = 'testBadge'; tb.textContent = 'TEST BUILD';
-      tb.style.cssText = 'position:fixed;left:50%;bottom:calc(env(safe-area-inset-bottom, 0px) + 4px);transform:translateX(-50%);' +
-        'z-index:99;pointer-events:none;font:700 10px/1 sans-serif;letter-spacing:2px;color:#ffd27a;' +
-        'background:rgba(90,20,10,0.82);border:1px solid #e0a040;border-radius:4px;padding:3px 7px;';
       document.body.appendChild(tb);
     }
     window.addEventListener('backend-status', e => {
