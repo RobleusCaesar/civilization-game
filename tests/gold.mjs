@@ -827,9 +827,31 @@ const MOCK = `
     const cheap = Deck.CATALOG.find(x => Deck.price(x.id) <= 50), dear = Deck.CATALOG.find(x => Deck.price(x.id) > 50);
     out.cheap = col(cheap.id); out.dear = col(dear.id);
     out.tagWords = [...document.querySelectorAll('#scrStore .stItem .stTag')].every(t => /^[\d,]+$/.test(t.textContent.trim()));
+    /* build 227: the held card's notes ("Not enough gold yet", "One already in
+       your deck") were drawn across the case's gold trim; they end inside it now,
+       with the TEST BUILD badge's room taken too (the test page, the tightest) */
+    const held = async () => {
+      Store.look(dear.id);
+      await new Promise(res => setTimeout(res, 700));
+      const L = document.querySelector('#scrStore .stLook'), c2 = box(document.querySelector('#scrStore .stCase'));
+      const notes = [...L.querySelectorAll('.stMsg, .stOwn')].filter(e => e.textContent).map(e => box(e).bottom);
+      const shelf = box(document.querySelector('#scrStore .stItem .ccard')).width;
+      const r2 = { caseB: c2.bottom, notesB: Math.max(...notes), n: notes.length, spill: L.scrollHeight - L.clientHeight, card: box(L.querySelector('.ccard')).width, shelf };
+      Store.closeLook(true);
+      return r2;
+    };
+    out.held = [await held()];
+    const tb = document.createElement('div'); tb.id = 'testBadge'; tb.textContent = 'TEST BUILD';
+    tb.style.cssText = 'position:fixed;left:50%;bottom:calc(env(safe-area-inset-bottom, 0px) + 4px);transform:translateX(-50%);font:700 10px/1 sans-serif;padding:3px 7px;border:1px solid';
+    document.body.appendChild(tb); Store.layout();
+    out.held.push(await held());
+    tb.remove(); Store.layout();
     return out;
   });
   const red = c => !!c && c[0] > 200 && c[0] - c[1] > 70, plain = c => !!c && !red(c);
+  ck('andAHeldCardsNotesEndInsideTheCasesTrim',
+    r.held.every(h => h.n === 2 && h.notesB <= h.caseB - 12 && h.spill <= 1 && h.card > h.shelf * 1.5),
+    r.held.map(h => `the notes (${h.n}) end ${Math.round(h.notesB)}, the case ${Math.round(h.caseB)}, spill ${h.spill}px, the card ${Math.round(h.card)} over the shelf's ${Math.round(h.shelf)}`).join('; with the badge: '));
   ck('theCounterRunsToTheFootAndTheCaseEndsAboveTheHomeBar',
     inset && r.sb === 34 && r.footLand >= r.H - 1 && r.footBuy >= r.H - 1 && r.seam < 1.5 && r.offersB <= r.H - r.sb && r.caseB <= r.H - r.sb - 6 && r.caseB >= r.H - r.sb - 20 && r.corners,
     `home bar ${inset ? r.sb : 'not emulated'}px; the counter to ${Math.round(r.footLand)} / ${Math.round(r.footBuy)} of ${r.H} (seam ${r.seam.toFixed(2)}px); the offers end ${Math.round(r.offersB)}; the case ends ${Math.round(r.caseB)}, its ornaments whole ${r.corners}`);
