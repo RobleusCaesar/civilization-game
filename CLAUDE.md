@@ -1658,7 +1658,28 @@ Scale2x'd inside a padded crop of the master like the hut, clear elsewhere),
 laid inside `.mkScene` over the counter (after `.mkOver`) at master pixels. A
 picture laid ON the scene at another pixel size, with a CSS shadow, is the sticker
 the operator refused — never again. One that would stand under a sign (the short
-window's column beside him) is put away. THE HEARTH
+window's column beside him) is put away. **NOTHING IS CUT BY THE AREA IT WAS
+PAINTED IN** (build 232 — "the right hand side of the gold coin pile is cut off …
+the handle of the beer stein is also slightly cut off … about 25% bigger …
+increase the pixel count of the pile of gold coins"): build 231's items filled
+their inpaint rectangles and were sawn off at the mask's edge. Each is painted in
+an area a margin bigger than itself, the prompt asking for bare planks on every
+side, and the mask's size sets the item's (an inpaint fills roughly three quarters
+of each side it is given, so size the mask, never the words — a size in pixels
+came back small, "fill the area" came back clipped); a candidate
+whose item meets the mask's edge is refused. The inpaint redraws the planks
+round the item too, so what ships is the item's own outline, never everything
+that changed: the changed pixels whose colour is not a plank moved a few rows,
+thin strips opened away, the convex hull of what is left, a pixel out — what
+lies inside it is shipped, the redrawn planks outside it left behind (a stein's
+staves share the planks' colours, so the wide one is cut by the opening alone,
+at a threshold of 20). THE HEAP IS AT TWICE THE PAINTING'S PIXELS: painted in a
+crop of the SHIPPED (Scale2x'd) hut, so its file is the picture itself (no
+Scale2x), every coin at half a master pixel, its box aligned to whole master
+pixels. The stein stands about a fifth taller than build 231's, wholly inside
+the 390x844 phone's view, clear of the trader. A redrawn item keeps its name
+and steps `Store.ITEMS_V` (the URL's `?v=<ART_V>.N`, Mira's FACES rule), so a
+device holding the last test build's pictures fetches the new ones. THE HEARTH
 BEHIND HIM FLICKERS (`FIRE`, `.mkFire`, `fire-{tall,wide}.png` — "make the fire
 flicker in the background"): a strip of the painting's own fire, animated by
 PixelLab from a crop of the master, every pixel off the flames taken back from
