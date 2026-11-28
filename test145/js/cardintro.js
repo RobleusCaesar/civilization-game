@@ -151,7 +151,7 @@ const CardIntro = {
   // announcement stands over takes it away (a test, a deep link, Continue)
   onScreen(name) {
     if (!this.open) return;
-    const home = this.from === 'cards' ? 'cards' : 'title';
+    const home = this.from === 'cards' || this.from === 'store' ? this.from : 'title';
     if (name !== home) this.close(true);
   },
 
@@ -159,7 +159,8 @@ const CardIntro = {
   show(from, opts) {
     if (!window.Deck || !Deck.on() || this.open) return false;
     opts = opts || {};
-    this.from = from === 'cards' ? 'cards' : 'title';
+    // the collection and the Marketplace's Deck (build 225) bring it back on purpose
+    this.from = from === 'cards' || from === 'store' ? from : 'title';
     Deck._set(this.KEY, '1');   // stamped when SHOWN
     this._css();
     const gen = ++this._gen;

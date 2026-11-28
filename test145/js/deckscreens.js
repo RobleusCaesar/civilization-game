@@ -75,12 +75,9 @@ const DeckScreens = {
   },
 
   /* ================= THE TITLE =================
-     A "Cards" plaque joins the secondary row, and the row folds into two by
-     two: a fourth TEXT plaque across that row cannot fit "Settings" at any
-     phone width (tests/boot.mjs noTitleLabelRunsOffItsPlaque), while two
-     across leaves every label room to spare. Plain text like its
-     neighbours — the secondary row carries no icons — with the deck's size
-     beside the word. The switch thrown back takes the plaque with it. */
+     The starter hand, the reward screen's pictures and the card
+     announcement, asked as the title is read. The deck's own door is the
+     Marketplace's since build 225 (js/gold.js onTitle). */
   onTitle() {
     const row = document.querySelector('#scrTitle .trow3');
     if (!window.Deck || !Deck.on()) {
@@ -93,15 +90,13 @@ const DeckScreens = {
     Deck.ensureStarter();
     this._css();
     this._listen();
-    if (row && !document.getElementById('btnTitleCards')) {
-      const b = document.createElement('button');
-      b.className = 'abtn';
-      b.id = 'btnTitleCards';
-      b.innerHTML = '<span class="blab">Cards<b class="clN"></b></span>';
-      b.addEventListener('click', () => this.openCollection('title'));
-      row.appendChild(b);
-      row.classList.add('clFour');
-    }
+    /* THE CARDS LIVE IN THE MARKETPLACE (build 225 — the operator: "now
+       there's only one button for the shopkeeper, not 2"): the title's Cards
+       plate is retired, the collection reached through the Marketplace's
+       Deck (js/store.js) and from the reward screen as ever. One a cached
+       older page built is taken away. */
+    const old = document.getElementById('btnTitleCards');
+    if (old) { old.remove(); if (row) row.classList.remove('clFour'); }
     this._paintCounts();
     this._preload();
     // the first title with the deck on announces it, once per device (js/cardintro.js)

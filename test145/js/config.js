@@ -1653,7 +1653,11 @@ const CFG = {
      ~12–25, a Moderate win ~25–50, a Hard win ~45–100, a defeat that earns
      its card mostly the floor to ~25, and only an epic run (30,000+) meets
      the cap. The dashboard's Gold section reads the real figures.
-     TEST is the purse the test page (and the ?cards=all test deck) holds. */
+     TEST is the purse the test page (and the ?cards=all test deck) holds.
+     SELL (build 225, the Marketplace — operator: "Sell should go for 20%
+     less than the buy rate"): the trader buys a held card back at SELL of
+     its price, rounded (Gold.sellPrice; 0020's card_sell_pct() is the
+     record's twin, held equal by tests/gold.mjs). */
   GOLD: {
     ON: true,
     RATE: 200,
@@ -1663,6 +1667,7 @@ const CFG = {
     PRICE: { stone: 40, bronze: 100, iron: 200, imperial: 500, enlight: 800 },
     CARD_PRICE: { dragonfire: 1000 },
     CONFIRM_OVER: 200,
+    SELL: 0.8,
     TEST: 3000,
   },
 };
