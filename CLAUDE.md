@@ -1624,11 +1624,18 @@ room for the offers), its own counter front is carried on from row `cut`
 (`.mkExt`, `counter-{wide,tall}.png`: a band of those planks and its mirror,
 `tile` rows, so it repeats without a seam) — never a stand-in fill.
 **THE OFFERS**: Buy, Sell and Your Deck, WOODEN SIGNS on the counter's front
-(build 226, from the operator's mockup: `plank.png`, a PixelLab plank with
-iron corner brackets drawn as a nine-slice — its ends kept, its middle drawn
-out, `--plank` — the coin stack `coins.png`, the purse, the card deck
-`deck.png`, the word in Cinzel and a gold chevron; a column on a phone, a row
-on a wide window, beside him on a window too short for the row). **THE CASE**:
+(build 226, from the operator's mockup: `sign.png`, a PixelLab board drawn
+as a nine-slice — its ends kept, its middle drawn out, `--plank` — the coin
+stack `coins.png`, the purse, the card deck `deck.png`, the word in Cinzel
+and a chevron; a column on a phone, a row on a wide window, beside him on a
+window too short for the row). **A SIGN STANDS OUT FROM THE COUNTER** (build
+227 — the operator: "the wooden buttons blend in too much… different grain
+and or color of wood… you don't know they're there"): the board is PALE
+honey ash in a dark iron frame with brass rivets, the counter dark
+mahogany, and the word and the chevron are BURNT IN (dark ink with a light
+cut below) — cream letters on the first, mid-brown plank sat on wood of its
+own tone and read as part of the counter. Keep the sign a different wood
+from the counter it hangs on. **THE CASE**:
 the album's black panel in the settings page's carved gold rim — on the
 counter from about 37% of a phone's height, beside him on a wide window —
 **ENDING ABOVE THE HOME BAR** (`Store._foot`: the safe area and 8px, and a

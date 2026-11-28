@@ -107,7 +107,7 @@ const Store = {
     const scr = document.createElement('div');
     scr.className = 'screen';
     scr.id = 'scrStore';
-    scr.style.setProperty('--plank', `url("${this._art('plank.png')}")`);
+    scr.style.setProperty('--plank', `url("${this._art('sign.png')}")`);
     const C = window.SettingsPage && SettingsPage.cornerSvg ? SettingsPage : null;
     scr.innerHTML =
       '<div class="mkScene" aria-hidden="true">' +
@@ -179,7 +179,8 @@ const Store = {
   },
   _art(n) { return `assets/ui/store/${n}?v=${(typeof CFG !== 'undefined' && CFG.ART_V) || 1}`; },
   // the gold chevron at an offer's right end
-  GO: '<svg class="mkGo" viewBox="0 0 12 20" aria-hidden="true"><path d="M2.5 2.5 9.5 10l-7 7.5" fill="none" stroke="#2a1606" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/><path d="M2.5 2.5 9.5 10l-7 7.5" fill="none" stroke="#f2cd6a" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+  // burnt into the pale board like the word beside it
+  GO: '<svg class="mkGo" viewBox="0 0 12 20" aria-hidden="true"><path d="M2.5 2.5 9.5 10l-7 7.5" fill="none" stroke="#2a1608" stroke-width="3.6" stroke-linecap="round" stroke-linejoin="round"/></svg>',
   /* what the case and the offers must leave clear at the window's foot: the
      phone's home bar (the safe area), and a test page's TEST BUILD badge */
   _foot(H) {
@@ -951,7 +952,8 @@ Store.CSS = `
 @media (min-width: 900px) { #scrStore .mkSay { font-size: 18px; padding: 10px 14px 12px; } #scrStore .mkWho { font-size: 10px; } }
 #scrStore .mkSay.narrow { font-size: 13.5px; padding: 7px 9px 8px; }
 /* THE OFFERS: wooden signs on the counter's front (build 226 — the operator's mockup:
-   a plank with iron corner brackets, a picture, the word and a gold chevron) */
+   a pale ash board in an iron frame, standing out from the dark counter, a picture,
+   the word burnt in and a chevron) */
 #scrStore .mkOffers { position: absolute; z-index: 3; display: flex; gap: 14px; filter: drop-shadow(0 5px 6px rgba(0,0,0,0.65)); }
 #scrStore .mkOffers[hidden] { display: none; }
 #scrStore .mkOffers.col { right: 0; flex-direction: column; align-items: center; gap: 10px; }
@@ -966,7 +968,7 @@ Store.CSS = `
 #scrStore .mkOffer::before { content: ''; position: absolute; inset: 0; z-index: -1; border-style: solid; border-width: 0 var(--pw); border-color: transparent;
   border-image: var(--plank) 0 64 fill / 0 var(--pw) stretch; }
 #scrStore .mkOffer::after { content: ''; position: absolute; inset: 0; z-index: -1; pointer-events: none; opacity: 0; transition: opacity 120ms ease-out;
-  background: radial-gradient(ellipse 70% 90% at 45% 50%, rgba(255,214,130,0.28), rgba(255,214,130,0) 75%); }
+  background: radial-gradient(ellipse 70% 90% at 45% 50%, rgba(255,250,222,0.34), rgba(255,250,222,0) 75%); }
 #scrStore .mkOffer:active { translate: 0 2px; }
 #scrStore .mkOffer:active::after { opacity: 1; }
 @media (hover: hover) { #scrStore .mkOffer:hover::after { opacity: 1; } #scrStore .mkOffer:hover .mkGo { translate: 3px 0; } }
@@ -975,12 +977,13 @@ Store.CSS = `
 #scrStore .mkOi img { width: 46px; height: 46px; filter: drop-shadow(0 2px 1px rgba(0,0,0,0.55)); }
 #scrStore .mkOffers.side .mkOi, #scrStore .mkOffers.side .mkOi img { width: 38px; height: 38px; }
 #scrStore .mkOffer > span { flex: 1 1 auto; display: flex; flex-direction: column; gap: 4px; min-width: 0; }
-#scrStore .mkOffer b { font: 800 22px/1 var(--menufont); letter-spacing: 1.6px; text-transform: uppercase; white-space: nowrap; color: #fbecc4;
-  text-shadow: 0 2px 0 #2a1606, 0 0 1px #2a1606, 1px 0 0 #2a1606, -1px 0 0 #2a1606; }
-#scrStore .mkOffer small { font: 600 14.5px/1 var(--numfont); color: #f0dcae; text-shadow: 0 1px 0 #2a1606, 0 0 2px #2a1606; white-space: nowrap; }
+/* the letters are burnt into the pale board: dark ink with a light cut below */
+#scrStore .mkOffer b { font: 800 22px/1 var(--menufont); letter-spacing: 1.6px; text-transform: uppercase; white-space: nowrap; color: #2a1608;
+  text-shadow: 0 1px 0 rgba(255,244,214,0.75); }
+#scrStore .mkOffer small { font: 600 14.5px/1 var(--numfont); color: #5a3416; text-shadow: 0 1px 0 rgba(255,244,214,0.6); white-space: nowrap; }
 #scrStore .mkOffers.side .mkOffer b { font-size: 18px; }
 #scrStore .mkOffers.side .mkOffer small { font-size: 13px; }
-#scrStore .mkGo { width: 12px; height: 20px; flex: 0 0 auto; transition: translate 120ms ease-out; filter: drop-shadow(0 1px 0 rgba(0,0,0,0.5)); }
+#scrStore .mkGo { width: 12px; height: 20px; flex: 0 0 auto; transition: translate 120ms ease-out; filter: drop-shadow(0 1px 0 rgba(255,244,214,0.6)); }
 /* THE CASE: the album's black panel in the settings page's carved gold rim */
 #scrStore .stCase { position: absolute; z-index: 2; display: flex; flex-direction: column; box-sizing: border-box;
   padding: 10px 8px 8px;
