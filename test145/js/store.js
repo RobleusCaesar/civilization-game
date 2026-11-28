@@ -55,6 +55,9 @@ const Store = {
   _flipT: 0,
   CONFIRM_GAP_MS: 400,
   FLIP_MS: 500,
+  // the held card's box ends this far inside the case's foot (its gold trim), and
+  // the deal under the card takes this much of it: gap, buttons, the note line, padding
+  LOOK_RIM: 8, LOOK_DEAL: 97,
   NAME: 'Old Bran',
   /* the paintings' own geometry, in MASTER pixels: the counter's top edge
      (`top`), the foot of its front lip (`front`), where the trader stands
@@ -148,8 +151,7 @@ const Store = {
             `<button class="stBuy" type="button" data-act="deal"><img class="stBuyI" src="${this._art('coins.png')}" alt=""><span class="stBuyL">Buy</span><span class="stBuyP"></span></button>` +
             '<button class="stPut" type="button" data-act="unlook">Put back</button>' +
           '</div>' +
-          '<p class="stMsg" role="status" aria-live="polite"></p>' +
-          '<p class="stOwn"></p>' +
+          '<div class="stNotes"><p class="stMsg" role="status" aria-live="polite"></p><p class="stOwn"></p></div>' +
         '</div>' +
       '</div>';
     document.getElementById('shell').appendChild(scr);
@@ -562,8 +564,9 @@ const Store = {
     // on a phone it may rise over the counter, never over his face
     const chin = y0 + (g.top - T.foot + T.head + 96) * s;
     const rise = wide ? 0 : Math.max(0, Math.min(cb.top - head - 8, cb.top - chin - 6));
-    // and down over the case's own foot, never into the home bar
-    const bottom = wide ? cb.bottom : Math.max(G.sb || 0, cb.bottom - 8);
+    // and down to the case's foot, inside its gold frame (the deal's last line
+    // drawn across the trim was build 226's), never into the home bar
+    const bottom = Math.max(G.sb || 0, cb.bottom + this.LOOK_RIM);
     return { left: cb.left, right: cb.right, top: cb.top - rise, bottom, w: W - cb.left - cb.right, h: H - bottom - (cb.top - rise) };
   },
   // a short case (a phone on its side) stands the deal beside the card, not under it
@@ -578,7 +581,7 @@ const Store = {
     const B = this._lookBox();
     if (!B) return 260;
     if (this._lookRow(B)) return Math.min(B.w - 200, 352, (B.h - 20) * Deck.W / Deck.H);
-    return Math.min(B.w - 28, 352, (B.h - 118) * Deck.W / Deck.H);
+    return Math.min(B.w - 28, 352, (B.h - this.LOOK_DEAL) * Deck.W / Deck.H);
   },
   /* the held card: as big as the room over the case allows, at whole device
      pixels, its back's words at the size a closer look reads them (LOOK_TU) */
@@ -593,6 +596,20 @@ const Store = {
     const face = Deck.face(this._id, { w: lf.w, back: f.classList.contains('flip') });
     f.replaceWith(face);
     Deck.backText(face, lf.tu);
+    this._settleLook();
+  },
+  // nothing of the deal may spill past the case's frame (a long word wraps a line):
+  // the card a whole step smaller until it all fits
+  _settleLook() {
+    const L = this.el && this.el.querySelector('.stLook');
+    if (!L || L.hidden || !this._id || L.classList.contains('row')) return;
+    for (let i = 0; i < 3 && L.scrollHeight > L.clientHeight + 1; i++) {
+      const f = L.querySelector('.ccard'), was = f ? f.offsetWidth : 0, w = Deck.fit(was - 1).w;
+      if (!f || w >= was || w < 100) return;
+      const face = Deck.face(this._id, { w, back: f.classList.contains('flip') });
+      f.replaceWith(face);
+      Deck.backText(face, Math.max(w / Deck.W, Deck.LOOK_TU || 2));
+    }
   },
   look(id, from) {
     if (!Deck.card(id) || this._anim) return;
@@ -613,16 +630,19 @@ const Store = {
     Deck.backText(face, lf.tu);
     this._msg('');
     this._paintDeal();
+    this._settleLook();
     this.say(this._line('hold' + m, id));
     this._cue('ok');
     clearTimeout(this._flipT);
-    // face up for half a second, then it turns to its back
-    if (!calm) this._flipT = setTimeout(() => { if (this._id === id && face.isConnected) face.classList.add('flip'); }, this.FLIP_MS);
+    // face up for half a second, then it turns to its back (the face in the host
+    // then: a resize or the settling may have redrawn it)
+    if (!calm) this._flipT = setTimeout(() => { const fc = host.querySelector('.ccard'); if (this._id === id && fc) fc.classList.add('flip'); }, this.FLIP_MS);
     if (calm || !from) return;
-    const a = from.getBoundingClientRect(), b = face.getBoundingClientRect();
+    const card = host.querySelector('.ccard') || face;
+    const a = from.getBoundingClientRect(), b = card.getBoundingClientRect();
     const s = a.width / b.width, dx = a.left + a.width / 2 - (b.left + b.width / 2), dy = a.top + a.height / 2 - (b.top + b.height / 2);
     try {
-      face.animate([{ transform: `translate(${dx}px, ${dy}px) scale(${s})` }, { transform: 'none' }], { duration: 320, easing: 'cubic-bezier(.3,1.32,.5,1)' });
+      card.animate([{ transform: `translate(${dx}px, ${dy}px) scale(${s})` }, { transform: 'none' }], { duration: 320, easing: 'cubic-bezier(.3,1.32,.5,1)' });
       L.querySelector('.stDeal').animate([{ opacity: 0 }, { opacity: 1 }], { duration: 260, easing: 'ease-out' });
     } catch (e) {}
   },
@@ -676,6 +696,7 @@ const Store = {
     if (!m) return;
     m.textContent = t || '';
     m.dataset.k = kind || '';
+    if (t && !this._anim) this._settleLook();
   },
 
   /* ---------------- the deal ---------------- */
@@ -1066,15 +1087,17 @@ Store.CSS = `
 #scrStore .stHow[hidden] { display: none; }
 /* A CARD HELD UP, over the case */
 #scrStore .stCase.holding > .stModes, #scrStore .stCase.holding > .stTiers, #scrStore .stCase.holding > .stPane { filter: brightness(0.26) saturate(0.7); }
-#scrStore .stLook { position: absolute; z-index: 5; display: flex; flex-direction: column; align-items: center; justify-content: flex-start; gap: 12px;
-  padding: 6px 12px 8px; box-sizing: border-box; }
+#scrStore .stLook { position: absolute; z-index: 5; display: flex; flex-direction: column; align-items: center; justify-content: flex-start; gap: 10px;
+  padding: 4px 12px; box-sizing: border-box; }
 #scrStore .stLook[hidden] { display: none; }
 #scrStore .stLook.row { flex-direction: row; justify-content: center; align-items: center; gap: 14px; padding-top: 8px; }
 #scrStore .stLook.row .stDeal { width: 176px; flex: 0 0 auto; }
 #scrStore .stLook.row .stDealRow { flex-direction: column; align-items: stretch; }
 #scrStore .stLook.row .stBuy { max-width: none; }
 #scrStore .stLookCard { cursor: pointer; filter: drop-shadow(0 12px 18px rgba(0,0,0,0.85)) drop-shadow(0 0 18px rgba(255,200,110,0.16)); }
-#scrStore .stDeal { display: flex; flex-direction: column; align-items: center; gap: 7px; width: min(400px, 100%); }
+#scrStore .stDeal { display: flex; flex-direction: column; align-items: center; gap: 5px; width: min(400px, 100%); }
+/* the status and the count share one line, and wrap only when they must */
+#scrStore .stNotes { display: flex; flex-wrap: wrap; justify-content: center; align-items: baseline; gap: 2px 12px; min-height: 18px; }
 #scrStore .stDealRow { display: flex; gap: 10px; justify-content: center; width: 100%; }
 #scrStore .stBuy, #scrStore .stPut { position: relative; isolation: isolate; min-height: 50px; border: 0; background: none; cursor: pointer;
   display: flex; align-items: center; justify-content: center; -webkit-appearance: none; appearance: none; -webkit-tap-highlight-color: transparent;
