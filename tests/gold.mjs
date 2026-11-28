@@ -692,7 +692,7 @@ const MOCK = `
      where they are drawn; then Buy's case, a card held up (its face, then
      its back), and Escape stepping back one thing at a time */
   const sizes = [[390, 844, 3], [375, 667, 2], [360, 740, 3], [844, 390, 3], [768, 1024, 2], [1280, 720, 1], [1440, 900, 2]];
-  const bad = [], held = [];
+  const bad = [], held = [], dressing = [], dressed = [];
   for (const [w, h, dpr] of sizes) {
     const { p, ctx } = await page({ q: '?prologue=0&cards=all', w, h, dpr });
     const r = await p.evaluate(async () => {
@@ -716,6 +716,20 @@ const MOCK = `
         sayIn: inside(say) && say.top >= head - 1,
         offers: offers.map(e => ({ m: e.dataset.mode, in: inside(box(e)), hit: hit(e) })),
       };
+      /* build 230 — the operator: "center the pile of gold coins in the middle of the
+         table (but they can still be on the left hand side), can we make the fire
+         flicker in the background … put 1 or 2 small items on the table … on wide
+         screen formats … please center them on screen" */
+      const fire = document.querySelector('#scrStore .mkFire'), F = Store.FIRE[Store._key], fcs = getComputedStyle(fire), fb = box(fire);
+      out.fire = { anim: fcs.animationName !== 'none' && fcs.animationPlayState === 'running', steps: +((fcs.animationTimingFunction.match(/steps\((\d+)/) || [])[1]), n: F.n,
+        at: Math.abs(fb.left - (G.x0 + F.x * G.s)) < 1 && Math.abs(fb.top - (G.y0 + F.y * G.s)) < 1 && Math.abs(fb.width - F.d * G.s) < 1 };
+      const ctop = G.y0 + G.g.top * G.s, cfront = G.y0 + G.g.front * G.s, ob = offers.map(box);
+      out.props = [...document.querySelectorAll('#scrStore .mkProp')].map(e => { const b = box(e);
+        return { k: e.dataset.prop, shown: !e.hidden && b.width > 8, cx: (b.left + b.right) / 2, depth: (b.bottom - ctop) / (cfront - ctop), in: inside(b), under: ob.some(o => over(o, b) > 0) }; });
+      const row = document.querySelector('#scrStore .mkOffers'), rb = box(row);
+      out.row = !row.classList.contains('col') && !row.classList.contains('side') ? Math.abs((rb.left + rb.right) / 2 - W / 2) : null;
+      out.side = row.classList.contains('side');
+      out.tx = G.x0 + G.g.tx * G.s;
       Store.setMode('buy');
       // the case slides up as it comes (220 ms): measured where it comes to rest
       await new Promise(res => setTimeout(res, 120));
@@ -745,6 +759,19 @@ const MOCK = `
       return out;
     });
     const tag = `${w}x${h}`;
+    {
+      const P = Object.fromEntries(r.props.map(x => [x.k, x])), shown = r.props.filter(x => x.shown);
+      const why = [];
+      if (!r.fire.anim || r.fire.steps !== r.fire.n || !r.fire.at) why.push(`the fire (running ${r.fire.anim}, steps ${r.fire.steps} for ${r.fire.n} frames, over the painting's own ${r.fire.at})`);
+      if (!P.pile || !P.pile.shown || !(P.pile.cx < r.tx) || !(P.pile.depth > 0.4 && P.pile.depth < 0.8)) why.push(`the gold (shown ${P.pile && P.pile.shown}, left of him ${P.pile && P.pile.cx < r.tx}, its foot ${P.pile && P.pile.depth.toFixed(2)} into the counter top)`);
+      if (!r.side && !(P.ledger && P.ledger.shown && P.scales && P.scales.shown)) why.push('no ledger or scales on the counter');
+      const line = ['pile', 'ledger', 'scales'].map(k => P[k]).filter(x => x && x.shown);
+      if (line.some((x, i) => i && !(x.cx > line[i - 1].cx))) why.push('the counter out of order');
+      for (const x of shown) if (!x.in || x.under || !(x.depth > 0.2 && x.depth < 1)) why.push(`the ${x.k} (in the window ${x.in}, under a sign ${x.under}, foot ${x.depth.toFixed(2)})`);
+      if (r.row !== null && !(r.row < 1.5)) why.push(`the row ${r.row.toFixed(1)}px off the window's middle`);
+      if (why.length) dressing.push(`${tag}: ${why.join(', ')}`);
+      dressed.push(`${tag} ${shown.length}${r.row !== null ? ' row ±' + r.row.toFixed(1) : ''}`);
+    }
     if (!(r.traderTall >= 0.2)) bad.push(`${tag} trader only ${(r.traderTall * 100).toFixed(0)}% of the height`);
     if (!r.faceIn) bad.push(`${tag} his face out of view`);
     if (r.faceCovered > 0.12) bad.push(`${tag} his words cover ${(r.faceCovered * 100).toFixed(0)}% of his face`);
@@ -766,6 +793,36 @@ const MOCK = `
   ck('theHallOpensOnTheTraderAndHisThreeOffers', bad.filter(x => !/held|Buy \/|Escape|says|case|ware/.test(x)).length === 0, bad.filter(x => !/held|Buy \/|Escape|says|case|ware/.test(x)).join(' | ') || sizes.length + ' windows: the trader in view, his face clear, three offers whole and answering');
   ck('aCardHeldUpShowsItsFaceThenItsBack', bad.filter(x => /held|Buy \/|says|case|ware/.test(x)).length === 0, bad.filter(x => /held|Buy \/|says|case|ware/.test(x)).join(' | ') || held.join(', '));
   ck('escapeStepsBackOneThingAtATime', bad.filter(x => /Escape/.test(x)).length === 0, bad.filter(x => /Escape/.test(x)).join(' | ') || 'the card, the mode, the hall');
+  // the hearth's strips: frame 0 IS the painting (every pixel it lays), nothing off the
+  // flames laid at all, one frame a step; reduced motion holds it on frame 0
+  {
+    const { p, ctx } = await page({ q: '?prologue=0' });
+    const f = await p.evaluate(async () => {
+      const img = src => new Promise(res => { const i = new Image(); i.onload = () => res(i); i.onerror = () => res(null); i.src = src; });
+      const px = (i, x, y, w, h) => { const c = document.createElement('canvas'); c.width = w; c.height = h; const g = c.getContext('2d'); g.drawImage(i, -x, -y); return g.getImageData(0, 0, w, h).data; };
+      const out = {};
+      for (const key of ['tall', 'wide']) {
+        const F = Store.FIRE[key], strip = await img(Store._art('fire-' + key + '.png')), hut = await img(Store._art('hut-' + key + '.png'));
+        if (!strip || !hut) { out[key] = { lost: true }; continue; }
+        const d = F.d * 2, a = px(strip, 0, 0, d, d), b = px(hut, F.x * 2, F.y * 2, d, d);
+        let laid = 0, off = 0, clear = 0;
+        for (let i = 0; i < a.length; i += 4) {
+          if (a[i + 3] === 0) { clear++; continue; }
+          laid++;
+          if (a[i] !== b[i] || a[i + 1] !== b[i + 1] || a[i + 2] !== b[i + 2]) off++;
+        }
+        out[key] = { frames: strip.naturalWidth / strip.naturalHeight, n: F.n, h: strip.naturalHeight, d, laid, off, clear };
+      }
+      return out;
+    });
+    await p.emulateMedia({ reducedMotion: 'reduce' });
+    const still = await p.evaluate(async () => { Store.open('title'); await new Promise(res => setTimeout(res, 150)); const n = getComputedStyle(document.querySelector('#scrStore .mkFire')).animationName; Store.close && Store.close(); return n; });
+    await ctx.close();
+    const okF = k => f[k] && !f[k].lost && f[k].frames === f[k].n && f[k].h === f[k].d && f[k].off === 0 && f[k].clear > f[k].d * 4 && f[k].laid > 0;
+    ck('andTheHearthFlickersAndTheCounterIsDressed', dressing.length === 0 && okF('tall') && okF('wide') && still === 'none',
+      (dressing.join(' | ') || 'gold on the left, the ledger and the scales on the right, ' + dressed.join(', ')) +
+      `; the strips ${['tall', 'wide'].map(k => f[k] && !f[k].lost ? `${k} ${f[k].frames} frames of ${f[k].n}, frame 0 lays ${f[k].laid} of the painting's pixels (${f[k].off} off), ${f[k].clear} clear` : k + ' missing').join('; ')}; reduced motion: ${still}`);
+  }
   // SELL through the screen: the last copy asks twice, the coins come home
   const { p, ctx } = await page({ q: '?prologue=0&cards=all' });
   const r = await p.evaluate(async () => {

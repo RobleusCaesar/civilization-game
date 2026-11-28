@@ -57,9 +57,23 @@ const Store = {
   FLIP_MS: 500,
   // the held card's box ends this far inside the case's foot (its gold trim), and
   // the deal under the card takes this much of it: gap, buttons, the note line, padding
-  // the plinth's rows of the counter top (plinth-{tall,wide}.png, master pixels) and
-  // the heap of gold on the counter (pile.png, master pixels, drawn half again his scale)
-  PLINTH: { tall: 20, wide: 18 }, PILE: { w: 31, h: 17, k: 1.8 },
+  // the plinth's rows of the counter top (plinth-{tall,wide}.png, master pixels)
+  PLINTH: { tall: 20, wide: 18 },
+  /* what stands on the counter top (build 230 — the operator: "center the pile of
+     gold coins in the middle of the table (but they can still be on the left hand
+     side) … put 1 or 2 small items on the table"): each its picture's size in its
+     own pixels (`w`, `h`), drawn `k` times the painting's scale, and where its foot
+     stands on each painting's counter top (master pixels: the middle, the foot) */
+  PROPS: {
+    pile:   { file: 'pile.png',   w: 31, h: 17, k: 1.6, tall: [104, 489], wide: [168, 303] },
+    ledger: { file: 'ledger.png', w: 34, h: 22, k: 1.1, tall: [262, 490], wide: [496, 303] },
+    scales: { file: 'scales.png', w: 32, h: 32, k: 1.2, tall: [326, 489], wide: [566, 302] },
+  },
+  /* the hearth behind him flickers (build 230, "make the fire flicker in the
+     background"): a strip of frames of the painting's own fire, the painting's
+     pixels everywhere but the flames (fire-{tall,wide}.png, `n` frames), laid over
+     the painting where its fire is (master pixels) */
+  FIRE: { tall: { x: 276, y: 378, d: 48, n: 7, ms: 760 }, wide: { x: 410, y: 190, d: 64, n: 9, ms: 940 } },
   LOOK_RIM: 8, LOOK_DEAL: 97,
   NAME: 'Old Bran',
   /* the paintings' own geometry, in MASTER pixels: the counter's top edge
@@ -119,12 +133,13 @@ const Store = {
     scr.innerHTML =
       '<div class="mkScene" aria-hidden="true">' +
         '<img class="mkBg" alt="" decoding="async">' +
+        '<i class="mkGlow"></i><i class="mkFire"></i>' +
         `<img class="mkTrader" alt="" decoding="async" src="${this._art('trader.png')}">` +
         '<img class="mkBg mkOver" alt="" decoding="async">' +
         '<i class="mkExt"></i>' +
       '</div>' +
       '<i class="mkPlinth" aria-hidden="true"></i>' +
-      `<img class="mkPile" alt="" aria-hidden="true" decoding="async" src="${this._art('pile.png')}">` +
+      Object.keys(this.PROPS).map(k => `<img class="mkProp${k === 'pile' ? ' mkPile' : ''}" data-prop="${k}" alt="" aria-hidden="true" decoding="async" src="${this._art(this.PROPS[k].file)}">`).join('') +
       '<i class="mkSb" aria-hidden="true"></i>' +
       '<header class="stHead">' +
         '<button class="stBack" type="button" data-act="step" aria-label="Back"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M10.5 2.5 5 8l5.5 5.5" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="square"/></svg></button>' +
@@ -382,13 +397,21 @@ const Store = {
     Object.assign(pl.style, { height: ph + 'px', backgroundImage: `url("${this._art('plinth-' + key + '.png')}")`,
       backgroundSize: `${g.w * s}px ${ph}px`, backgroundPosition: `${x0}px 0` });
     pl.classList.toggle('px', up);
-    // a little heap of gold on the counter top, to his right as we look (the operator's mockup)
-    const pile = el.querySelector('.mkPile'), P = this.PILE;
-    pile.hidden = browse;
-    if (!browse) {
-      const pw = P.w * s * P.k, ph2 = P.h * s * P.k;
-      const left = wide ? x0 + (g.tx - T.half) * s - pw - 6 : Math.max(8, x0 + 30 * s);
-      Object.assign(pile.style, { left: left + 'px', top: y0 + (g.front - 3) * s - ph2 + 'px', width: pw + 'px', height: ph2 + 'px' });
+    // the hearth's flames, over the painting's own fire
+    const F = this.FIRE[key], fire = el.querySelector('.mkFire');
+    fire.className = 'mkFire ' + key;
+    // and its light on the room round it, breathing with the flames
+    Object.assign(el.querySelector('.mkGlow').style, { left: (F.x + F.d / 2 - F.d * 1.6) * s + 'px', top: (F.y + F.d * 0.62 - F.d * 1.6) * s + 'px', width: F.d * 3.2 * s + 'px', height: F.d * 3.2 * s + 'px' });
+    Object.assign(fire.style, { left: F.x * s + 'px', top: F.y * s + 'px', width: F.d * s + 'px', height: F.d * s + 'px',
+      backgroundImage: `url("${this._art('fire-' + key + '.png')}")`, backgroundSize: `${F.n * 100}% 100%`, animationDuration: F.ms + 'ms' });
+    // what stands on the counter top: a heap of gold on the left, a ledger and the
+    // scales on the right (the operator's mockup, build 230)
+    for (const im of el.querySelectorAll('.mkProp')) {
+      const P = this.PROPS[im.dataset.prop];
+      im.hidden = browse;
+      if (browse) continue;
+      const pw = P.w * s * P.k, ph2 = P.h * s * P.k, [mx, my] = P[key];
+      Object.assign(im.style, { left: x0 + mx * s - pw / 2 + 'px', top: y0 + my * s - ph2 + 'px', width: pw + 'px', height: ph2 + 'px' });
     }
     // the offers: on the counter's front, under him
     const cx = x0 + g.tx * s;
@@ -399,8 +422,16 @@ const Store = {
       } else if (!wide) {
         Object.assign(offers.style, { left: '0px', top: y0 + (g.front + 8) * s + 'px' });
       } else {
+        // the row stands in the middle of the window (build 230: "they're left
+        // justified, please center them on screen")
         const ow = offers.offsetWidth || 700;
-        Object.assign(offers.style, { left: Math.max(12, Math.min(W - ow - 12, cx - ow / 2)) + 'px', top: y0 + (g.front + 10) * s + 'px' });
+        Object.assign(offers.style, { left: Math.max(12, (W - ow) / 2) + 'px', top: y0 + (g.front + 10) * s + 'px' });
+      }
+      // nothing on the counter stands under a sign (a short window puts them beside him)
+      const ob = offers.getBoundingClientRect();
+      for (const im of el.querySelectorAll('.mkProp')) {
+        const l = parseFloat(im.style.left), t = parseFloat(im.style.top);
+        im.hidden = l < ob.right && l + parseFloat(im.style.width) > ob.left && t < ob.bottom && t + parseFloat(im.style.height) > ob.top;
       }
     }
     // the case
@@ -947,8 +978,20 @@ Store.CSS = `
 #scrStore .mkPlinth { position: absolute; left: 0; right: 0; bottom: 0; z-index: 1; display: block; pointer-events: none;
   background-repeat: repeat-x; box-shadow: 0 -3px 6px rgba(0,0,0,0.45); }
 #scrStore .mkPlinth.px { image-rendering: pixelated; }
-#scrStore .mkPile { position: absolute; z-index: 1; display: block; pointer-events: none; image-rendering: pixelated; filter: drop-shadow(0 2px 1px rgba(0,0,0,0.5)); }
-#scrStore .mkPile[hidden] { display: none; }
+#scrStore .mkProp { position: absolute; z-index: 1; display: block; pointer-events: none; image-rendering: pixelated; filter: drop-shadow(0 2px 1px rgba(0,0,0,0.5)); }
+#scrStore .mkProp[hidden] { display: none; }
+#scrStore .mkFire { position: absolute; display: block; background-repeat: no-repeat; background-position: 0 0; }
+#scrStore .mkScene.px .mkFire { image-rendering: pixelated; }
+#scrStore .mkFire.tall { animation: mkFire7 760ms steps(7, jump-none) infinite; }
+#scrStore .mkFire.wide { animation: mkFire9 940ms steps(9, jump-none) infinite; }
+@keyframes mkFire7 { from { background-position: 0 0; } to { background-position: 100% 0; } }
+@keyframes mkFire9 { from { background-position: 0 0; } to { background-position: 100% 0; } }
+#scrStore .mkGlow { position: absolute; display: block; border-radius: 50%; mix-blend-mode: screen; opacity: 0.2;
+  background: radial-gradient(closest-side, rgba(255,170,70,0.55), rgba(255,120,40,0.22) 55%, rgba(255,100,30,0) 100%);
+  animation: mkGlow 2.3s linear infinite; }
+@keyframes mkGlow { 0% { opacity: 0.2; } 9% { opacity: 0.32; } 17% { opacity: 0.18; } 31% { opacity: 0.28; } 42% { opacity: 0.22; }
+  55% { opacity: 0.34; } 63% { opacity: 0.2; } 78% { opacity: 0.3; } 88% { opacity: 0.17; } 100% { opacity: 0.2; } }
+@media (prefers-reduced-motion: reduce) { #scrStore .mkFire.tall, #scrStore .mkFire.wide, #scrStore .mkGlow { animation: none; } }
 #scrStore .mkSb { position: absolute; left: 0; bottom: 0; width: 1px; height: env(safe-area-inset-bottom, 0px); pointer-events: none; visibility: hidden; }
 /* THE HEADER: back, the name, the purse */
 #scrStore .stHead { position: absolute; left: 0; right: 0; top: 0; z-index: 6; display: flex; align-items: center; gap: 10px; box-sizing: border-box;
