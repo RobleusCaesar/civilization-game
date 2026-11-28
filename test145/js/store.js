@@ -68,11 +68,21 @@ const Store = {
      so it wears the painting's pixel size, its light and its shadow on the planks,
      and only the pixels the painting changed are shipped
      (item-{name}-{tall,wide}.png, Scale2x'd in a padded crop of the master like the
-     hut). Where each lies on each painting, in master pixels. */
+     hut). Where each lies on each painting, in master pixels.
+     Build 232 (the operator: "the right hand side of the gold coin pile is cut
+     off … the handle of the beer stein is also slightly cut off … about 25%
+     bigger … increase the pixel count of the pile of gold coins"): each item is
+     painted in an area with bare planks all round it, so nothing meets the edge
+     of what was painted, and cut from the painting by its own outline (the hull
+     of what the inpaint changed, the planks it merely redrew left behind); the
+     heap is painted at the shipped hut's doubled pixels, so its file IS the
+     picture (no Scale2x), every coin at half a master pixel. ITEMS_V steps the
+     pictures' URLs when one is redrawn under its name (Mira's FACES rule). */
   ITEMS: {
-    pile:  { tall: { x: 76, y: 462, w: 60, h: 32 }, wide: { x: 116, y: 284, w: 60, h: 29 } },
-    stein: { tall: { x: 292, y: 437, w: 54, h: 55 }, wide: { x: 541, y: 250, w: 52, h: 52 } },
+    pile:  { tall: { x: 70, y: 461, w: 79, h: 37 }, wide: { x: 111, y: 278, w: 71, h: 35 } },
+    stein: { tall: { x: 268, y: 429, w: 78, h: 63 }, wide: { x: 540, y: 236, w: 57, h: 60 } },
   },
+  ITEMS_V: 2,
   /* the hearth behind him flickers (build 230, "make the fire flicker in the
      background"): a strip of frames of the painting's own fire, the painting's
      pixels everywhere but the flames (fire-{tall,wide}.png, `n` frames), laid over
@@ -412,7 +422,7 @@ const Store = {
     // left, a wooden tankard with an antler handle on the right (build 231)
     for (const im of el.querySelectorAll('.mkItem')) {
       const I = this.ITEMS[im.dataset.item][key];
-      if (im.dataset.key !== key) { im.dataset.key = key; im.src = this._art(`item-${im.dataset.item}-${key}.png`); }
+      if (im.dataset.key !== key) { im.dataset.key = key; im.src = this._art(`item-${im.dataset.item}-${key}.png`) + '.' + this.ITEMS_V; }
       Object.assign(im.style, { left: I.x * s + 'px', top: I.y * s + 'px', width: I.w * s + 'px', height: I.h * s + 'px' });
       im.hidden = false;
     }
