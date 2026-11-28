@@ -1543,7 +1543,7 @@ days), never the brief's "10 minutes and 500 points", which the card rule
 retired long ago (`Deck.goldFor`): `floor(final score / RATE 200)`, at least
 `FLOOR` (10), at most `CAP` (150), the final score the end screen's
 (`S.over.score`, the difficulty IN). The journey pays a fixed purse a game
-instead (`PROLOGUE` 25 / 35 / 50), once a player, held off by its own
+instead (`PROLOGUE` 40 / 50 / 60 — the journey ends on 150, build 233), once a player, held off by its own
 ledger (`pro:N`). The score and the board are untouched. **THE PURSE IS THE
 COLLECTION'S** (`c.gold`, `c.goldRuns` the runs paid, `c.buys` the
 purchases by id, `c.pend` a purchase whose answer was lost, `c.prices` the

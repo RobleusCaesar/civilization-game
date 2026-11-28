@@ -12,7 +12,7 @@
       ending), never against the row's outcome, never a defeat short of its
       deeds, never a journey win (that door is grant_prologue_gold's), and
       the CAP holds for the biggest score.
-   4. THE JOURNEY'S GOLD: 25 / 35 / 50, once per game per player ever (the
+   4. THE JOURNEY'S GOLD: 40 / 50 / 60 (150 in all), once per game per player ever (the
       same run again "already", another run "already_had").
    5. THE PURSE NEVER GOES BELOW NOTHING: buy_card short of the price
       touches nothing; the wallet's own check refuses a negative balance

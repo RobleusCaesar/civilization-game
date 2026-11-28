@@ -22,7 +22,7 @@
    seen on this device. */
 const PATCH_NOTES = [
   {
-    build: 232, date: '2026-11-28', title: 'The Marketplace',
+    build: 233, date: '2026-11-28', title: 'The Marketplace',
     items: [
       'The Trader and your Cards are now one place: the Marketplace, a timber trading hall on the main menu where the trader stands behind his counter and greets you.',
       'Choose Buy, Sell or Your Deck. Your cards are laid out in a case on his counter, and the tier buttons jump straight to Stone, Bronze, Iron, Imperial or Mythic.',
@@ -36,7 +36,7 @@ const PATCH_NOTES = [
     build: 224, date: '2026-11-27', title: 'Gold and the Trader',
     items: [
       'Every game that earns a card now pays gold too: one gold for every 200 points, at least 10 and at most 150. Coins burst from the pedestal on the end screen and pour into your purse.',
-      'The journey pays its own gold: 25, 35 and 50 for its three games.',
+      'The journey pays its own gold: 40, 50 and 60 for its three games, so a new player finishes it with 150.',
       'Spend it at the Trader, a new store on the main menu beside your Cards. Every card is for sale, sorted by tier from Stone to Mythic, as many as your gold can buy, and a card you cannot afford yet wears its price in red.',
       'Tap a card to hold it up and turn it over, then Buy. Dear cards ask you to tap twice, and the card flies straight into your deck.',
       'Your purse shows on the main menu and in Settings. Gold is kept safe in the cloud with your cards.',

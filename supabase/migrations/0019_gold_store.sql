@@ -14,7 +14,7 @@
 --   0. the guard: 0008 (the card record) and 0010 (the dashboard's model)
 --      must be applied first — it refuses, naming them
 --   1. THE NUMBERS, each in one place: gold_rate() (200 points a gold),
---      gold_floor() (10), gold_cap() (150), gold_prologue(game) (25, 35, 50).
+--      gold_floor() (10), gold_cap() (150), gold_prologue(game) (40, 50, 60 — 150 over the journey).
 --      The game's halves are CFG.GOLD in js/config.js — tests/deck-sync.mjs
 --      holds the two equal
 --   2. telemetry.kind admits 'store' (the store's own rows: a visit, a BUY
@@ -95,7 +95,7 @@ returns integer language sql immutable set search_path = '' as $$ select 150 $$;
 -- a journey game's win (CFG.GOLD.PROLOGUE)
 create or replace function public.gold_prologue(p_game integer)
 returns integer language sql immutable set search_path = '' as $$
-  select case p_game when 1 then 25 when 2 then 35 when 3 then 50 end
+  select case p_game when 1 then 40 when 2 then 50 when 3 then 60 end
 $$;
 -- the gold a finished run's final score pays: one for every gold_rate()
 -- points, never under the floor, never over the cap

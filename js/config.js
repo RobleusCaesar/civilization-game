@@ -1641,7 +1641,9 @@ const CFG = {
      and days) also earns GOLD: one for every RATE points of the FINAL score
      (the end screen's number, the difficulty multiplier in), never under
      FLOOR (so a defeat still pays) and never over CAP. A journey game's win
-     pays its PROLOGUE sum instead, once per game. The gold buys cards at the
+     pays its PROLOGUE sum instead, once per game (40, 50 and 60: the journey
+     ends on 150, the operator, build 233: "give every player enough coins over
+     the first three starting levels to end with 150"). The gold buys cards at the
      main menu's store: a card's price is its tier's (PRICE), or its own
      (CARD_PRICE); a purchase over CONFIRM_OVER asks first. The server is the
      purse (0019's gold_rate(), gold_floor(), gold_cap(), gold_prologue() and
@@ -1663,7 +1665,7 @@ const CFG = {
     RATE: 200,
     FLOOR: 10,
     CAP: 150,
-    PROLOGUE: { 1: 25, 2: 35, 3: 50 },
+    PROLOGUE: { 1: 40, 2: 50, 3: 60 },
     PRICE: { stone: 40, bronze: 100, iron: 200, imperial: 500, enlight: 800 },
     CARD_PRICE: { dragonfire: 1000 },
     CONFIRM_OVER: 200,
