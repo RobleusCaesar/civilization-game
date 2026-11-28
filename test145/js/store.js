@@ -57,6 +57,9 @@ const Store = {
   FLIP_MS: 500,
   // the held card's box ends this far inside the case's foot (its gold trim), and
   // the deal under the card takes this much of it: gap, buttons, the note line, padding
+  // the plinth's rows of the counter top (plinth-{tall,wide}.png, master pixels) and
+  // the heap of gold on the counter (pile.png, master pixels, drawn half again his scale)
+  PLINTH: { tall: 20, wide: 18 }, PILE: { w: 31, h: 17, k: 1.8 },
   LOOK_RIM: 8, LOOK_DEAL: 97,
   NAME: 'Old Bran',
   /* the paintings' own geometry, in MASTER pixels: the counter's top edge
@@ -110,7 +113,8 @@ const Store = {
     const scr = document.createElement('div');
     scr.className = 'screen';
     scr.id = 'scrStore';
-    scr.style.setProperty('--plank', `url("${this._art('sign.png')}")`);
+    scr.style.setProperty('--plank', `url("${this._art('board.png')}")`);
+    scr.style.setProperty('--banner', `url("${this._art('banner.png')}")`);
     const C = window.SettingsPage && SettingsPage.cornerSvg ? SettingsPage : null;
     scr.innerHTML =
       '<div class="mkScene" aria-hidden="true">' +
@@ -119,6 +123,8 @@ const Store = {
         '<img class="mkBg mkOver" alt="" decoding="async">' +
         '<i class="mkExt"></i>' +
       '</div>' +
+      '<i class="mkPlinth" aria-hidden="true"></i>' +
+      `<img class="mkPile" alt="" aria-hidden="true" decoding="async" src="${this._art('pile.png')}">` +
       '<i class="mkSb" aria-hidden="true"></i>' +
       '<header class="stHead">' +
         '<button class="stBack" type="button" data-act="step" aria-label="Back"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M10.5 2.5 5 8l5.5 5.5" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="square"/></svg></button>' +
@@ -129,9 +135,10 @@ const Store = {
       '</header>' +
       '<div class="mkSay" role="status" aria-live="polite"><b class="mkWho"></b><span class="mkSayT"></span></div>' +
       '<div class="mkOffers">' +
+        '<i class="mkBanner" aria-hidden="true"></i><i class="mkBanner r" aria-hidden="true"></i>' +
         `<button class="mkOffer" type="button" data-act="mode" data-mode="buy"><i class="mkOi"><img src="${this._art('coins.png')}" alt=""></i><span><b>Buy</b><small>Cards for gold</small></span>${this.GO}</button>` +
         `<button class="mkOffer" type="button" data-act="mode" data-mode="sell"><i class="mkOi"><img src="${window.Gold ? Gold.art('purse') : ''}" alt=""></i><span><b>Sell</b><small>Gold for your cards</small></span>${this.GO}</button>` +
-        `<button class="mkOffer" type="button" data-act="mode" data-mode="own"><i class="mkOi"><img src="${this._art('deck.png')}" alt=""></i><span><b>Your Deck</b><small class="mkFound"></small></span>${this.GO}</button>` +
+        `<button class="mkOffer" type="button" data-act="mode" data-mode="own"><i class="mkOi"><img src="${this._art('deck.png')}" alt=""></i><span><b>Your deck</b><small class="mkFound"></small></span>${this.GO}</button>` +
       '</div>' +
       '<div class="stCase" hidden>' +
         (C ? [['tl', 0, 0], ['tr', 1, 0], ['bl', 0, 1], ['br', 1, 1]].map(([c, fx, fy]) => `<i class="stC ${c}">${C.cornerSvg('stc' + c, fx, fy)}</i>`).join('') : '') +
@@ -181,8 +188,8 @@ const Store = {
   },
   _art(n) { return `assets/ui/store/${n}?v=${(typeof CFG !== 'undefined' && CFG.ART_V) || 1}`; },
   // the gold chevron at an offer's right end
-  // burnt into the pale board like the word beside it
-  GO: '<svg class="mkGo" viewBox="0 0 12 20" aria-hidden="true"><path d="M2.5 2.5 9.5 10l-7 7.5" fill="none" stroke="#2a1608" stroke-width="3.6" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+  // a gold chevron on the dark board, as the operator's mockup has it
+  GO: '<svg class="mkGo" viewBox="0 0 14 24" aria-hidden="true"><path d="M3 3l8 9-8 9" fill="none" stroke="#1b0d05" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/><path d="M3 3l8 9-8 9" fill="none" stroke="#e8bf5e" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round"/><path d="M3.6 3.6l7 8" fill="none" stroke="#fbe6a6" stroke-width="1.2" stroke-linecap="round"/></svg>',
   /* what the case and the offers must leave clear at the window's foot: the
      phone's home bar (the safe area), and a test page's TEST BUILD badge */
   _foot(H) {
@@ -310,6 +317,9 @@ const Store = {
     }
     const head = el.querySelector('.stHead').getBoundingClientRect().bottom;
     const sb = el.querySelector('.mkSb').offsetHeight || 0, foot = this._foot(H);
+    // the plinth the counter stands on, at the window's very foot (a home bar drawn over
+    // it): the offers stand above it
+    const plinthH = sc => Math.round(this.PLINTH[key] * sc), landFoot = sc => Math.max(foot, plinthH(sc) + 6);
     const browse = this._mode !== 'land';
     const offers = el.querySelector('.mkOffers'), box = el.querySelector('.stCase');
     let s, x0, y0, cb = null;
@@ -321,7 +331,7 @@ const Store = {
         x0 = (W - g.w * s) / 2;
         y0 = (H - g.h * s) / 2;
         const oh = offers.offsetHeight || 220;
-        const over = y0 + (g.front + 8) * s + oh + 6 + foot - H;
+        const over = y0 + (g.front + 8) * s + oh + 6 + landFoot(s) - H;
         if (over > 0) y0 -= over;
       } else {
         s = W / g.w;
@@ -337,7 +347,7 @@ const Store = {
       if (!browse) {
         x0 = (W - g.w * s) / 2;
         const oh = offers.offsetHeight || 66, top = y0 + (g.front + 10) * s;
-        const room = H - foot - 4 - (top + oh), headTop = y0 + (g.top - T.foot + T.head) * s;
+        const room = H - landFoot(s) - 4 - (top + oh), headTop = y0 + (g.top - T.foot + T.head) * s;
         if (room < 0) {
           const lift = Math.min(-room, Math.max(0, headTop - head - 4));
           y0 -= lift;
@@ -367,12 +377,25 @@ const Store = {
       Object.assign(ext.style, { top: g.cut * s + 'px', height: Math.ceil(H - (y0 + g.cut * s)) + 2 + 'px',
         backgroundImage: `url("${this._art('counter-' + key + '.png')}")`, backgroundSize: `${g.w * s}px ${g.tile * s}px` });
     }
+    // the plinth: the counter top's own planks, laid at the window's foot
+    const pl = el.querySelector('.mkPlinth'), ph = plinthH(s);
+    Object.assign(pl.style, { height: ph + 'px', backgroundImage: `url("${this._art('plinth-' + key + '.png')}")`,
+      backgroundSize: `${g.w * s}px ${ph}px`, backgroundPosition: `${x0}px 0` });
+    pl.classList.toggle('px', up);
+    // a little heap of gold on the counter top, to his right as we look (the operator's mockup)
+    const pile = el.querySelector('.mkPile'), P = this.PILE;
+    pile.hidden = browse;
+    if (!browse) {
+      const pw = P.w * s * P.k, ph2 = P.h * s * P.k;
+      const left = wide ? x0 + (g.tx - T.half) * s - pw - 6 : Math.max(8, x0 + 30 * s);
+      Object.assign(pile.style, { left: left + 'px', top: y0 + (g.front - 3) * s - ph2 + 'px', width: pw + 'px', height: ph2 + 'px' });
+    }
     // the offers: on the counter's front, under him
     const cx = x0 + g.tx * s;
     if (!browse) {
       if (offers.classList.contains('side')) {
         const ow = offers.offsetWidth || 224, oh = offers.offsetHeight || 172;
-        Object.assign(offers.style, { left: Math.min(W - ow - 12, cx + T.half * s + 16) + 'px', top: Math.max(head + 6, (head + H - foot - oh) / 2) + 'px' });
+        Object.assign(offers.style, { left: Math.min(W - ow - 12, cx + T.half * s + 16) + 'px', top: Math.max(head + 6, (head + H - landFoot(s) - oh) / 2) + 'px' });
       } else if (!wide) {
         Object.assign(offers.style, { left: '0px', top: y0 + (g.front + 8) * s + 'px' });
       } else {
@@ -921,6 +944,11 @@ Store.CSS = `
 #scrStore .mkExt { position: absolute; left: 0; width: 100%; display: block; background-color: #2a1a12; background-repeat: repeat-y; background-position: 0 0; }
 #scrStore .mkExt[hidden] { display: none; }
 #scrStore .mkScene.px .mkExt { image-rendering: pixelated; }
+#scrStore .mkPlinth { position: absolute; left: 0; right: 0; bottom: 0; z-index: 1; display: block; pointer-events: none;
+  background-repeat: repeat-x; box-shadow: 0 -3px 6px rgba(0,0,0,0.45); }
+#scrStore .mkPlinth.px { image-rendering: pixelated; }
+#scrStore .mkPile { position: absolute; z-index: 1; display: block; pointer-events: none; image-rendering: pixelated; filter: drop-shadow(0 2px 1px rgba(0,0,0,0.5)); }
+#scrStore .mkPile[hidden] { display: none; }
 #scrStore .mkSb { position: absolute; left: 0; bottom: 0; width: 1px; height: env(safe-area-inset-bottom, 0px); pointer-events: none; visibility: hidden; }
 /* THE HEADER: back, the name, the purse */
 #scrStore .stHead { position: absolute; left: 0; right: 0; top: 0; z-index: 6; display: flex; align-items: center; gap: 10px; box-sizing: border-box;
@@ -972,39 +1000,48 @@ Store.CSS = `
 #scrStore .mkSay[data-tail="r"]::after { right: -8px; top: var(--ty); border-bottom: 0; border-left: 0; transform: rotate(45deg); background: #e8d6ad; }
 @media (min-width: 900px) { #scrStore .mkSay { font-size: 18px; padding: 10px 14px 12px; } #scrStore .mkWho { font-size: 10px; } }
 #scrStore .mkSay.narrow { font-size: 13.5px; padding: 7px 9px 8px; }
-/* THE OFFERS: wooden signs on the counter's front (build 226 — the operator's mockup:
-   a pale ash board in an iron frame, standing out from the dark counter, a picture,
-   the word burnt in and a chevron) */
-#scrStore .mkOffers { position: absolute; z-index: 3; display: flex; gap: 14px; filter: drop-shadow(0 5px 6px rgba(0,0,0,0.65)); }
+/* THE OFFERS: wooden signs on the counter's front (builds 226-229 — the operator's
+   mockup: a dark plank board with iron corner brackets and brass studs, the word in
+   cream Cinzel over a cream line, a big picture, a gold chevron, and the clan's green
+   cloth hanging behind the column for contrast) */
+#scrStore .mkOffers { position: absolute; z-index: 3; display: flex; gap: 14px; filter: drop-shadow(0 5px 6px rgba(0,0,0,0.7)); }
 #scrStore .mkOffers[hidden] { display: none; }
-#scrStore .mkOffers.col { right: 0; flex-direction: column; align-items: center; gap: 10px; }
+#scrStore .mkOffers.col { right: 0; flex-direction: column; align-items: center; gap: 9px; --bw: min(312px, calc(100vw - 72px)); }
 #scrStore .mkOffers.side { flex-direction: column; gap: 8px; }
-#scrStore .mkOffer { position: relative; isolation: isolate; display: flex; align-items: center; gap: 12px; width: 296px; height: 66px; padding: 0 20px 0 24px;
-  border: 0; background: none; cursor: pointer; text-align: left; color: #f6e6bd; -webkit-appearance: none; appearance: none; -webkit-tap-highlight-color: transparent;
-  --pw: 53px; }
-#scrStore .mkOffers.col .mkOffer { width: min(340px, calc(100vw - 40px)); height: 66px; }
-#scrStore .mkOffers.side .mkOffer { width: 252px; height: 54px; --pw: 43px; padding: 0 16px 0 20px; }
-@media (max-width: 360px) { #scrStore .mkOffers.col .mkOffer b { font-size: 19px; letter-spacing: 1.2px; } #scrStore .mkOffers.col .mkOffer { padding: 0 16px 0 20px; } }
-/* the plank: its ends (the iron brackets) kept, its middle drawn out to the sign's width */
+#scrStore .mkOffer { position: relative; z-index: 1; isolation: isolate; display: flex; align-items: center; gap: 12px; width: 300px; height: 66px; padding: 0 22px 0 26px;
+  border: 0; background: none; cursor: pointer; text-align: left; color: #f3e4bd; -webkit-appearance: none; appearance: none; -webkit-tap-highlight-color: transparent;
+  --pw: 38.5px; }
+#scrStore .mkOffers.col .mkOffer { width: var(--bw); height: 60px; --pw: 35px; padding: 0 20px 0 22px; }
+#scrStore .mkOffers.side .mkOffer { width: 252px; height: 54px; --pw: 31.5px; padding: 0 18px 0 20px; }
+/* the board: its ends (the iron brackets, 28 of its 256 pixels) kept, its middle drawn out */
 #scrStore .mkOffer::before { content: ''; position: absolute; inset: 0; z-index: -1; border-style: solid; border-width: 0 var(--pw); border-color: transparent;
-  border-image: var(--plank) 0 64 fill / 0 var(--pw) stretch; }
-#scrStore .mkOffer::after { content: ''; position: absolute; inset: 0; z-index: -1; pointer-events: none; opacity: 0; transition: opacity 120ms ease-out;
-  background: radial-gradient(ellipse 70% 90% at 45% 50%, rgba(255,250,222,0.34), rgba(255,250,222,0) 75%); }
+  border-image: var(--plank) 0 112 fill / 0 var(--pw) stretch; }
+#scrStore .mkOffer::after { content: ''; position: absolute; inset: 4px 10px; z-index: -1; pointer-events: none; opacity: 0; transition: opacity 120ms ease-out;
+  background: radial-gradient(ellipse 70% 90% at 45% 50%, rgba(255,206,120,0.24), rgba(255,206,120,0) 75%); }
 #scrStore .mkOffer:active { translate: 0 2px; }
 #scrStore .mkOffer:active::after { opacity: 1; }
 @media (hover: hover) { #scrStore .mkOffer:hover::after { opacity: 1; } #scrStore .mkOffer:hover .mkGo { translate: 3px 0; } }
 #scrStore .mkOffer:focus-visible { outline: 2px solid #f2cf73; outline-offset: 3px; }
-#scrStore .mkOi { width: 46px; height: 46px; flex: 0 0 auto; display: flex; align-items: center; justify-content: center; }
-#scrStore .mkOi img { width: 46px; height: 46px; filter: drop-shadow(0 2px 1px rgba(0,0,0,0.55)); }
-#scrStore .mkOffers.side .mkOi, #scrStore .mkOffers.side .mkOi img { width: 38px; height: 38px; }
-#scrStore .mkOffer > span { flex: 1 1 auto; display: flex; flex-direction: column; gap: 4px; min-width: 0; }
-/* the letters are burnt into the pale board: dark ink with a light cut below */
-#scrStore .mkOffer b { font: 800 22px/1 var(--menufont); letter-spacing: 1.6px; text-transform: uppercase; white-space: nowrap; color: #2a1608;
-  text-shadow: 0 1px 0 rgba(255,244,214,0.75); }
-#scrStore .mkOffer small { font: 600 14.5px/1 var(--numfont); color: #5a3416; text-shadow: 0 1px 0 rgba(255,244,214,0.6); white-space: nowrap; }
-#scrStore .mkOffers.side .mkOffer b { font-size: 18px; }
-#scrStore .mkOffers.side .mkOffer small { font-size: 13px; }
-#scrStore .mkGo { width: 12px; height: 20px; flex: 0 0 auto; transition: translate 120ms ease-out; filter: drop-shadow(0 1px 0 rgba(255,244,214,0.6)); }
+#scrStore .mkOi { width: 52px; height: 52px; flex: 0 0 auto; display: flex; align-items: center; justify-content: center; }
+#scrStore .mkOi img { width: 52px; height: 52px; filter: drop-shadow(0 2px 1px rgba(0,0,0,0.6)); }
+#scrStore .mkOffers.side .mkOi, #scrStore .mkOffers.side .mkOi img { width: 42px; height: 42px; }
+#scrStore .mkOffer > span { flex: 1 1 auto; display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+/* the word in Cinzel as it is spelt (its lower case is small capitals: "Buy", "Your deck"),
+   cream on the dark wood, the line under it plain cream */
+#scrStore .mkOffer b { font: 700 24px/1.05 var(--menufont); letter-spacing: 1px; text-transform: none; white-space: nowrap; color: #f4e5be;
+  text-shadow: 0 2px 0 #1b0d05, 0 0 3px rgba(0,0,0,0.75); }
+#scrStore .mkOffer small { font: 500 16px/1.1 var(--numfont); color: #eedfb6; text-shadow: 0 1px 0 #1b0d05, 0 0 3px rgba(0,0,0,0.7); white-space: nowrap; }
+#scrStore .mkOffers.side .mkOffer b { font-size: 20px; }
+#scrStore .mkOffers.side .mkOffer small { font-size: 14px; }
+@media (max-width: 360px) { #scrStore .mkOffers.col .mkOffer b { font-size: 21px; } #scrStore .mkOffers.col .mkOffer small { font-size: 14.5px; }
+  #scrStore .mkOffers.col .mkOi, #scrStore .mkOffers.col .mkOi img { width: 44px; height: 44px; } #scrStore .mkOffers.col .mkOffer { gap: 10px; padding: 0 16px 0 18px; } }
+#scrStore .mkGo { width: 14px; height: 24px; flex: 0 0 auto; transition: translate 120ms ease-out; filter: drop-shadow(0 1px 1px rgba(0,0,0,0.6)); }
+/* the clan's cloth, hanging from under the counter top behind the column's two edges */
+#scrStore .mkBanner { display: none; }
+#scrStore .mkOffers.col .mkBanner { display: block; position: absolute; z-index: 0; box-sizing: border-box; top: -6px; left: calc(50% - var(--bw) / 2 - 31px); width: 40px; height: 152px;
+  border-style: solid; border-color: transparent; border-width: 7px 0 50px; border-image: var(--banner) 24 0 168 fill / 7px 0 50px stretch;
+  image-rendering: pixelated; pointer-events: none; }
+#scrStore .mkOffers.col .mkBanner.r { left: auto; right: calc(50% - var(--bw) / 2 - 31px); transform: scaleX(-1); }
 /* THE CASE: the album's black panel in the settings page's carved gold rim */
 #scrStore .stCase { position: absolute; z-index: 2; display: flex; flex-direction: column; box-sizing: border-box;
   padding: 10px 8px 8px;
