@@ -22,7 +22,7 @@
    seen on this device. */
 const PATCH_NOTES = [
   {
-    build: 227, date: '2026-11-28', title: 'The Marketplace',
+    build: 228, date: '2026-11-28', title: 'The Marketplace',
     items: [
       'The Trader and your Cards are now one place: the Marketplace, a timber trading hall on the main menu where the trader stands behind his counter and greets you.',
       'Choose Buy, Sell or Your Deck. Your cards are laid out in a case on his counter, and the tier buttons jump straight to Stone, Bronze, Iron, Imperial or Mythic.',
